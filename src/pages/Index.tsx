@@ -1,14 +1,27 @@
-// Update this page (the content is just a fallback if you fail to update the page)
+import { useAuth } from '@/contexts/AuthContext';
+import { LoginForm } from '@/components/auth/LoginForm';
+import { Dashboard } from '@/pages/Dashboard';
+import { RefreshCw } from 'lucide-react';
 
 const Index = () => {
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold mb-4">Welcome to Your Blank App</h1>
-        <p className="text-xl text-muted-foreground">Start building your amazing project here!</p>
+  const { currentUser, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-secondary/30 to-primary/10">
+        <div className="text-center space-y-4">
+          <RefreshCw className="h-8 w-8 animate-spin text-primary mx-auto" />
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
       </div>
-    </div>
-  );
+    );
+  }
+
+  if (!currentUser) {
+    return <LoginForm />;
+  }
+
+  return <Dashboard />;
 };
 
 export default Index;
