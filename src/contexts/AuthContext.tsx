@@ -8,7 +8,8 @@ interface AuthContextType {
   currentUser: User | null;
   firebaseUser: FirebaseUser | null;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, name: string, role: 'judge' | 'spectator') => Promise<void>;
+  register: (email: string, password: string, name: string, role: 'judge' | 'spectator' | 'admin') => Promise<void>;
+  adminLogin: (password: string) => Promise<void>;
   logout: () => Promise<void>;
   loading: boolean;
 }
@@ -38,7 +39,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  async function register(email: string, password: string, name: string, role: 'judge' | 'spectator') {
+  async function register(email: string, password: string, name: string, role: 'judge' | 'spectator' | 'admin') {
     try {
       const result = await createUserWithEmailAndPassword(auth, email, password);
       const userData: User = {
@@ -92,12 +93,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return unsubscribe;
   }, []);
 
+  async function adminLogin(password: string) {
+    // Hardcoded admin password: "admin2025ICTAS"
+    if (password === "admin2025ICTAS") {
+      const adminUser: User = {
+        id: "admin",
+        name: "System Administrator",
+        email: "admin@ictas2025.com",
+        role: "admin"
+      };
+      setCurrentUser(adminUser);
+    } else {
+      throw new Error("Invalid admin password");
+    }
+  }
+
   const value = {
     currentUser,
     firebaseUser,
     login,
     register,
     logout,
+    adminLogin,
     loading
   };
 

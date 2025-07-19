@@ -2,7 +2,7 @@ export interface User {
   id: string;
   name: string;
   email: string;
-  role: 'judge' | 'spectator';
+  role: 'judge' | 'spectator' | 'admin';
 }
 
 export interface Presentation {
