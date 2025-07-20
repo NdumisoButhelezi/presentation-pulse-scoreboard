@@ -10,6 +10,7 @@ import { Dashboard } from "./pages/Dashboard";
 import { AdminDashboard } from "./pages/AdminDashboard";
 import { HallOfFame } from "./pages/HallOfFame";
 import NotFound from "./pages/NotFound";
+import MyReserved from './pages/MyReserved';
 import "./App.css";
 
 const queryClient = new QueryClient();
@@ -27,6 +28,7 @@ const App = () => (
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/admin" element={<AdminDashboard />} />
               <Route path="/hall-of-fame" element={<HallOfFame />} />
+              <Route path="/my-reserved" element={<MyReserved />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>

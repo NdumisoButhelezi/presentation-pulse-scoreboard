@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { RoomBadge } from '@/components/ui/room-badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,8 +11,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Presentation, ROOMS, Vote } from '@/types';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { Search, Filter, Trophy, Users, LogOut, RefreshCw, ThumbsUp, Calendar, Clock, MapPin, Play, Coffee, Utensils } from 'lucide-react';
+import { Search, Filter, Trophy, Users, LogOut, RefreshCw, ThumbsUp, Calendar, Clock, MapPin, Play, Coffee, Utensils, Bookmark, BookmarkCheck } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useNavigate } from 'react-router-dom';
 
 // Add agenda item types
 interface AgendaItem {
@@ -33,10 +36,24 @@ export function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRoom, setSelectedRoom] = useState<string>('all');
-  const [agendaView, setAgendaView] = useState<'list' | 'timeline' | 'focus'>('list');
+  const [agendaView, setAgendaView] = useState<'list' | 'timeline' | 'focus'>(
+    // Default to 'timeline' for judge, otherwise 'list'
+    currentUser?.role === 'judge' ? 'timeline' : 'list'
+  );
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<string | null>(null);
   const [showCurrentEvents, setShowCurrentEvents] = useState(false);
   const [agendaItems, setAgendaItems] = useState<AgendaItem[]>([]);
+  const navigate = useNavigate();
+  const [reserved, setReserved] = useState<Record<string, boolean>>(() => {
+    // Try to load from localStorage for persistence
+    const saved = localStorage.getItem('reservedSeats');
+    return saved ? JSON.parse(saved) : {};
+  });
+
+  // Save reserved seats to localStorage on change
+  useEffect(() => {
+    localStorage.setItem('reservedSeats', JSON.stringify(reserved));
+  }, [reserved]);
 
   // Function to determine if a presentation is currently happening - MOVED BEFORE USAGE
   const isCurrentEvent = (item: Presentation | AgendaItem) => {
@@ -64,6 +81,10 @@ export function Dashboard() {
     loadAgendaItems();
     if (currentUser) {
       loadUserVotes();
+      // Redirect judge to timeline view on login
+      if (currentUser.role === 'judge') {
+        setAgendaView('timeline');
+      }
     }
   }, [currentUser]);
 
@@ -405,6 +426,14 @@ export function Dashboard() {
       ? ROOMS.filter(room => (currentUser as any).assignedRooms.includes(room))
       : ROOMS;
 
+  // Handle seat reservation toggle
+  const handleReserve = (presentationId: string) => {
+    setReserved(prev => ({
+      ...prev,
+      [presentationId]: !prev[presentationId]
+    }));
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -421,7 +450,7 @@ export function Dashboard() {
       {/* Header */}
       <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-10">
         <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-2">
             <div className="flex items-center space-x-4">
               <Trophy className="h-8 w-8 text-primary" />
               <div>
@@ -431,7 +460,7 @@ export function Dashboard() {
             </div>
             <div className="flex items-center space-x-4">
               {(getCurrentEvents().presentations.length > 0 || getCurrentEvents().agendaItems.length > 0) && (
-                <div className="flex items-center space-x-2 px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">
+                <div className="hidden sm:flex items-center space-x-2 px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">
                   <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
                   <span className="font-medium">
                     {getCurrentEvents().presentations.length + getCurrentEvents().agendaItems.length} Live Event{getCurrentEvents().presentations.length + getCurrentEvents().agendaItems.length !== 1 ? 's' : ''}
@@ -449,46 +478,58 @@ export function Dashboard() {
                   {currentUser?.role}
                 </p>
               </div>
+              {/* Add My Reserved button in header for larger screens */}
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => navigate('/my-reserved')}
+                className="hidden sm:flex"
+              >
+                <Bookmark className="h-4 w-4 mr-2" />
+                My Reserved
+              </Button>
               <Button variant="outline" size="sm" onClick={handleLogout}>
                 <LogOut className="h-4 w-4 mr-2" />
-                Logout
+                <span className="sm:inline hidden">Logout</span>
               </Button>
             </div>
           </div>
         </div>
       </header>
 
-      <div className="container mx-auto px-4 py-6">
+      <div className="container mx-auto px-2 sm:px-4 py-4 sm:py-6">
         {/* Filters & View Controls */}
-        <Card className="mb-6">
-          <CardHeader>
-            <div className="flex items-center justify-between">
+        <Card className="mb-4 sm:mb-6">
+          <CardHeader className="p-4 sm:p-6">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
               <div className="flex items-center">
                 <Filter className="h-5 w-5 mr-2" />
                 <span>Filter & View Options</span>
               </div>
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-2 w-full sm:w-auto">
                 <Button
                   variant={agendaView === 'timeline' ? 'default' : 'outline'}
                   size="sm"
                   onClick={() => setAgendaView('timeline')}
+                  className="flex-1 sm:flex-initial"
                 >
                   <Calendar className="h-4 w-4 mr-1" />
                   Timeline
                 </Button>
                 <Button
-                  variant={agendaView === 'focus' ? 'default' : 'outline'}
+                  variant={agendaView === 'focus' || agendaView === 'list' ? 'default' : 'outline'}
                   size="sm"
-                  onClick={() => setAgendaView('focus')}
+                  onClick={() => setAgendaView('list')}
+                  className="flex-1 sm:flex-initial"
                 >
                   <Play className="h-4 w-4 mr-1" />
-                  Focus Mode
+                  Agenda
                 </Button>
               </div>
             </div>
           </CardHeader>
-          <CardContent>
-            <div className="flex flex-col sm:flex-row gap-4">
+          <CardContent className="p-4 sm:p-6 pt-0 sm:pt-0">
+            <div className="flex flex-col gap-3">
               <div className="flex-1 relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
@@ -498,55 +539,58 @@ export function Dashboard() {
                   className="pl-9"
                 />
               </div>
-              <Select value={selectedRoom} onValueChange={setSelectedRoom}>
-                <SelectTrigger className="w-full sm:w-48">
-                  <SelectValue placeholder="Filter by room" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Rooms</SelectItem>
-                  {ROOMS.map(room => (
-                    <SelectItem key={room} value={room}>{room}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button variant="outline" onClick={loadPresentations}>
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Refresh
-              </Button>
-              <Button 
-                variant={showCurrentEvents ? "default" : "outline"} 
-                onClick={() => {
-                  setShowCurrentEvents(!showCurrentEvents);
-                  if (!showCurrentEvents) {
-                    // Reset other filters when showing current events
-                    setSelectedRoom('all');
-                    setSearchTerm('');
-                    setAgendaView('list');
-                  }
-                }}
-                className={(getCurrentEvents().presentations.length > 0 || getCurrentEvents().agendaItems.length > 0) ? "border-green-500 text-green-700" : ""}
-              >
-                <div className="flex items-center">
-                  <div className={`w-2 h-2 rounded-full mr-2 ${(getCurrentEvents().presentations.length > 0 || getCurrentEvents().agendaItems.length > 0) ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`} />
-                  Current Events ({getCurrentEvents().presentations.length + getCurrentEvents().agendaItems.length})
-                </div>
-              </Button>
-              <Button 
-                variant={agendaView ? "default" : "outline"} 
-                onClick={() => setAgendaView(agendaView === 'list' ? 'timeline' : 'list')}
-              >
-                {agendaView === 'timeline' ? "List View" : "Timeline View"}
-              </Button>
+              <div className="grid grid-cols-2 sm:flex gap-2">
+                <Select value={selectedRoom} onValueChange={setSelectedRoom}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Filter by room" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Rooms</SelectItem>
+                    {ROOMS.map(room => (
+                      <SelectItem key={room} value={room}>{room}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button variant="outline" onClick={loadPresentations} className="w-full sm:w-auto">
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  <span className="sm:inline hidden">Refresh</span>
+                </Button>
+                <Button 
+                  variant={showCurrentEvents ? "default" : "outline"} 
+                  onClick={() => {
+                    setShowCurrentEvents(!showCurrentEvents);
+                    if (!showCurrentEvents) {
+                      setSelectedRoom('all');
+                      setSearchTerm('');
+                      setAgendaView('list');
+                    }
+                  }}
+                  className={`w-full sm:w-auto ${(getCurrentEvents().presentations.length > 0 || getCurrentEvents().agendaItems.length > 0) ? "border-green-500 text-green-700" : ""}`}
+                >
+                  <div className="flex items-center">
+                    <div className={`w-2 h-2 rounded-full mr-2 ${(getCurrentEvents().presentations.length > 0 || getCurrentEvents().agendaItems.length > 0) ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`} />
+                    <span className="truncate">Current ({getCurrentEvents().presentations.length + getCurrentEvents().agendaItems.length})</span>
+                  </div>
+                </Button>
+                <Button 
+                  variant="outline"
+                  onClick={() => navigate('/my-reserved')}
+                  className="w-full sm:w-auto"
+                >
+                  <Bookmark className="h-4 w-4 mr-2" />
+                  <span className="truncate">My Reserved</span>
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Voting Statistics */}
+        {/* Voting Statistics - Make responsive */}
         {currentUser && (
-          <Card className="mb-6 bg-gradient-to-r from-primary/5 to-accent/5">
+          <Card className="mb-4 sm:mb-6 bg-gradient-to-r from-primary/5 to-accent/5">
             <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-4">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-2">
+                <div className="flex items-center space-x-4 w-full">
                   <div className="flex items-center">
                     {currentUser.role === 'judge' ? (
                       <Trophy className="h-5 w-5 text-primary mr-2" />
@@ -575,8 +619,9 @@ export function Dashboard() {
         {/* Dynamic Agenda & Presentations */}
         {agendaView === 'timeline' ? (
           <Tabs defaultValue="all" className="w-full">
+            {/* Hide TabsList on mobile, show only on sm and up */}
             <TabsList
-              className={`grid w-full ${
+              className={`hidden sm:grid w-full ${
                 visibleRooms.length > 0 ? `grid-cols-${visibleRooms.length + 1}` : 'grid-cols-1'
               }`}
             >
@@ -608,12 +653,29 @@ export function Dashboard() {
               ) : (
                 <div className="grid gap-4">
                   {filteredPresentations.map(presentation => (
-                    <PresentationCard
-                      key={presentation.id}
-                      presentation={presentation}
-                      userVote={userVotes[presentation.id]}
-                      hasVoted={!!userVotes[presentation.id]}
-                    />
+                    <div key={presentation.id} className="relative">
+                      <PresentationCard
+                        presentation={presentation}
+                        userVote={userVotes[presentation.id]}
+                        hasVoted={!!userVotes[presentation.id]}
+                      />
+                      <Button
+                        variant={reserved[presentation.id] ? "default" : "outline"}
+                        size="sm"
+                        className="absolute top-16 right-2 shadow-sm" 
+                        onClick={() => handleReserve(presentation.id)}
+                        aria-label={reserved[presentation.id] ? "Unreserve Seat" : "Reserve Seat"}
+                      >
+                        {reserved[presentation.id] ? (
+                          <BookmarkCheck className="h-4 w-4 text-green-600 mr-1" />
+                        ) : (
+                          <Bookmark className="h-4 w-4 mr-1" />
+                        )}
+                        <span className="text-xs hidden sm:inline">
+                          {reserved[presentation.id] ? "Reserved" : "Reserve"}
+                        </span>
+                      </Button>
+                    </div>
                   ))}
                 </div>
               )}
@@ -623,30 +685,45 @@ export function Dashboard() {
               <TabsContent key={room} value={room} className="space-y-4">
                 <div className="grid gap-4">
                   {presentationsByRoom[room].map(presentation => (
-                    <PresentationCard
-                      key={presentation.id}
-                      presentation={presentation}
-                      userVote={userVotes[presentation.id]}
-                      hasVoted={!!userVotes[presentation.id]}
-                    />
+                    <div key={presentation.id} className="relative">
+                      <PresentationCard
+                        presentation={presentation}
+                        userVote={userVotes[presentation.id]}
+                        hasVoted={!!userVotes[presentation.id]}
+                      />
+                      {/* Reserve Seat Button - MOVED LOWER */}
+                      <Button
+                        variant={reserved[presentation.id] ? "default" : "outline"}
+                        size="icon"
+                        className="absolute top-16 right-2"
+                        onClick={() => handleReserve(presentation.id)}
+                        aria-label={reserved[presentation.id] ? "Unreserve Seat" : "Reserve Seat"}
+                      >
+                        {reserved[presentation.id] ? (
+                          <BookmarkCheck className="h-5 w-5 text-green-600" />
+                        ) : (
+                          <Bookmark className="h-5 w-5" />
+                        )}
+                      </Button>
+                    </div>
                   ))}
                 </div>
               </TabsContent>
             ))}
           </Tabs>
         ) : (
-          /* Focus Mode - Dynamic Agenda */
-          <div className="space-y-6">
-            {/* Event Selector */}
+          /* Agenda View - Make responsive */
+          <div className="space-y-5 sm:space-y-6">
+            {/* Event Selector - Improve mobile view */}
             <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center">
+              <CardHeader className="p-4 sm:p-6">
+                <CardTitle className="flex items-center text-lg sm:text-xl">
                   <Calendar className="h-5 w-5 mr-2" />
-                  Conference Agenda - Focus Mode
+                  Conference Agenda
                 </CardTitle>
               </CardHeader>
-              <CardContent>
-                <div className="grid gap-4">
+              <CardContent className="p-4 sm:p-6 pt-0 sm:pt-0">
+                <div className="grid gap-3 sm:gap-4">
                   {/* Group slots by day and show day label */}
                   {(() => {
                     const slots = getTimeSlots();
@@ -659,153 +736,190 @@ export function Dashboard() {
                       return (
                         <div key={slot.time}>
                           {showDay && (
-                            <div className="mb-2 mt-4 text-lg font-bold text-primary flex items-center">
+                            <div className="mb-2 mt-3 sm:mt-4 text-base sm:text-lg font-bold text-primary flex items-center">
                               <Calendar className="h-4 w-4 mr-2" />
-                              {getDayLabel(date)} &mdash; {date}
+                              <span className="truncate">{getDayLabel(date)} &mdash; {date}</span>
                             </div>
                           )}
                           <div
-                            className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
+                            className={`p-4 sm:p-4 rounded-xl border-2 cursor-pointer transition-all select-none ${
                               isFocused
-                                ? 'border-primary bg-primary/5'
+                                ? 'border-primary bg-primary/10 shadow-lg'
                                 : slot.isActive
                                 ? 'border-green-500 bg-green-50'
                                 : slot.isPast
                                 ? 'border-gray-300 bg-gray-50 opacity-75'
                                 : 'border-border hover:border-primary/50'
-                            }`}
+                            } ${isFocused ? 'ring-2 ring-primary' : ''} active:scale-[0.98]`}
+                            style={{ minHeight: 56, touchAction: 'manipulation' }}
                             onClick={() =>
                               setSelectedTimeSlot(isFocused ? null : slot.time)
                             }
                           >
-                            <div className="flex items-center justify-between">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                               <div className="flex items-center space-x-3">
                                 <div className="flex items-center space-x-2">
-                                  <Clock className="h-4 w-4 text-muted-foreground" />
-                                  <span className="font-medium">{slot.displayTime}</span>
+                                  <Clock className="h-5 w-5 text-muted-foreground" />
+                                  <span className="font-semibold text-base sm:text-lg">{slot.displayTime}</span>
                                 </div>
                                 {slot.isActive && (
                                   <div className="flex items-center space-x-1 text-green-600">
-                                    <Play className="h-4 w-4" />
-                                    <span className="text-sm font-medium">Live Now</span>
-                                  </div>
-                                )}
-                                {slot.hasBreak && (
-                                  <div className="flex items-center space-x-1 text-blue-600">
-                                    <Coffee className="h-4 w-4" />
-                                    <span className="text-sm">Break Time</span>
+                                    <Play className="h-5 w-5" />
+                                    <span className="text-sm font-semibold">Live Now</span>
                                   </div>
                                 )}
                               </div>
-                              <div className="flex items-center space-x-4">
+                              <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-xs sm:text-sm">
+                                {slot.hasBreak && (
+                                  <div className="flex items-center space-x-1 text-blue-600">
+                                    <Coffee className="h-4 w-4 sm:h-5 sm:w-5" />
+                                    <span className="font-medium">Break</span>
+                                  </div>
+                                )}
                                 {slot.agendaItems.length > 0 && (
-                                  <div className="flex items-center space-x-1 text-sm text-muted-foreground">
+                                  <div className="flex items-center space-x-1 text-muted-foreground max-w-[120px] sm:max-w-none">
                                     {getAgendaIcon(slot.agendaItems[0].type)}
-                                    <span>{slot.agendaItems[0].title}</span>
+                                    <span className="truncate font-medium text-sm">{slot.agendaItems[0].title}</span>
                                   </div>
                                 )}
                                 {slot.presentations.length > 0 && (
-                                  <span className="text-sm text-muted-foreground">
+                                  <span className="text-muted-foreground font-medium">
                                     {slot.presentations.length} session{slot.presentations.length !== 1 ? 's' : ''}
                                   </span>
                                 )}
                               </div>
                             </div>
                             {/* Show presentation titles under the slot */}
-                            <div className="flex flex-col mt-2 ml-6">
+                            <div className="flex flex-col mt-2 ml-2 sm:ml-6">
                               {slot.presentations.length > 0 && (
-                                <ul className="list-disc pl-4 text-sm text-primary">
+                                <ul className="list-disc pl-4 text-xs sm:text-sm text-primary">
                                   {slot.presentations.map((presentation) => (
-                                    <li key={presentation.id}>{presentation.title}</li>
+                                    <li key={presentation.id} className="truncate max-w-[180px] sm:max-w-none">{presentation.title}</li>
                                   ))}
                                 </ul>
                               )}
                             </div>
                           </div>
-                          {/* Focused session content appears right below the selected card */}
+
+                          {/* Improve focused session content for better mobile formatting */}
                           {isFocused && (
-                            <Card className="my-4">
-                              <CardHeader>
-                                <CardTitle className="flex items-center justify-between">
-                                  <div className="flex items-center">
-                                    <Play className="h-5 w-5 mr-2" />
+                            <Card className="my-3 sm:my-4 shadow-xl border-primary border-2">
+                              <CardHeader className="p-3 sm:p-4 pb-1 sm:pb-2 bg-primary/10 rounded-t-xl">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                  <h3 className="text-lg sm:text-xl font-bold flex items-center text-primary">
+                                    <Play className="h-5 w-5 sm:h-6 sm:w-6 mr-2" />
                                     Focused Session
-                                  </div>
+                                  </h3>
                                   <Button
                                     variant="outline"
                                     size="sm"
                                     onClick={() => setSelectedTimeSlot(null)}
+                                    className="self-end sm:self-auto"
                                   >
                                     Clear Focus
                                   </Button>
-                                </CardTitle>
+                                </div>
                               </CardHeader>
-                              <CardContent>
-                                <div className="space-y-6">
-                                  {/* Agenda Items for this time slot */}
+                              <CardContent className="p-3 sm:p-4">
+                                <div className="space-y-4">
+                                  {/* Agenda Items - Better mobile format */}
                                   {slot.agendaItems.length > 0 && (
-                                    <div className="space-y-4">
-                                      <h3 className="text-lg font-semibold flex items-center">
-                                        <Calendar className="h-5 w-5 mr-2" />
-                                        Scheduled Events
+                                    <div className="space-y-3">
+                                      <h3 className="text-base font-semibold flex items-center border-b pb-1 mb-2">
+                                        <Calendar className="h-4 w-4 mr-2 flex-shrink-0" />
+                                        <span>Scheduled Events</span>
                                       </h3>
-                                      {slot.agendaItems.map(item => (
-                                        <div key={item.id} className={`p-4 rounded-lg border ${
-                                          item.isBreak ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200'
-                                        }`}>
-                                          <div className="flex items-center justify-between">
-                                            <div className="flex items-center space-x-3">
-                                              {getAgendaIcon(item.type)}
-                                              <div>
-                                                <h4 className="font-medium">{item.title}</h4>
+                                      <div className="grid gap-3">
+                                        {slot.agendaItems.map(item => (
+                                          <div key={item.id} className={`p-4 rounded-xl border ${
+                                            item.isBreak ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200'
+                                          } active:scale-[0.98]`} style={{ minHeight: 56, touchAction: 'manipulation' }}>
+                                            <div className="flex items-start gap-3">
+                                              <div className="mt-0.5 flex-shrink-0">
+                                                {getAgendaIcon(item.type)}
+                                              </div>
+                                              <div className="flex-grow min-w-0">
+                                                <div className="flex flex-col sm:flex-row sm:items-center justify-between">
+                                                  <h4 className="font-semibold truncate text-base sm:text-lg">{item.title}</h4>
+                                                  <div className="text-xs font-semibold mt-1 sm:mt-0">
+                                                    {formatTime(item.startTime)} - {formatTime(item.endTime)}
+                                                  </div>
+                                                </div>
                                                 {item.description && (
-                                                  <p className="text-sm text-muted-foreground">{item.description}</p>
+                                                  <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{item.description}</p>
                                                 )}
                                                 {item.room && (
-                                                  <p className="text-sm text-muted-foreground flex items-center mt-1">
-                                                    <MapPin className="h-3 w-3 mr-1" />
-                                                    {item.room}
+                                                  <p className="text-xs text-muted-foreground flex items-center mt-1">
+                                                    <MapPin className="h-3 w-3 mr-1 flex-shrink-0" />
+                                                    <span className="truncate">{item.room}</span>
                                                   </p>
                                                 )}
-                                              </div>
-                                            </div>
-                                            <div className="text-right">
-                                              <div className="text-sm font-medium">
-                                                {formatTime(item.startTime)} - {formatTime(item.endTime)}
-                                              </div>
-                                              <div className="text-xs text-muted-foreground capitalize">
-                                                {item.type}
+                                                <div className="text-xs text-muted-foreground capitalize mt-1">
+                                                  {item.type}
+                                                </div>
                                               </div>
                                             </div>
                                           </div>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  )}
-
-                                  {/* Presentations for this time slot */}
-                                  {slot.presentations.length > 0 && (
-                                    <div className="space-y-4">
-                                      <h3 className="text-lg font-semibold flex items-center">
-                                        <Trophy className="h-5 w-5 mr-2" />
-                                        Presentations ({slot.presentations.length})
-                                      </h3>
-                                      <div className="grid gap-4">
-                                        {slot.presentations.map(presentation => (
-                                          <PresentationCard
-                                            key={presentation.id}
-                                            presentation={presentation}
-                                            userVote={userVotes[presentation.id]}
-                                            hasVoted={!!userVotes[presentation.id]}
-                                          />
                                         ))}
                                       </div>
                                     </div>
                                   )}
 
+                                  {/* Presentations - Better mobile format */}
+                                  {slot.presentations.length > 0 && (
+                                    <div className="space-y-3">
+                                      <h3 className="text-base font-semibold flex items-center border-b pb-1 mb-2">
+                                        <Trophy className="h-4 w-4 mr-2 flex-shrink-0" />
+                                        <span>Presentations ({slot.presentations.length})</span>
+                                      </h3>
+                                      <div className="grid gap-3">
+                                        {slot.presentations.map(presentation => (
+                                          <div key={presentation.id} className="pb-2">
+                                            <div className="bg-white rounded-xl p-0 flex flex-col h-full">
+                                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                                <div className="flex-1 min-w-0">
+                                                  <CardTitle className="text-lg leading-tight mb-2">{presentation.title}</CardTitle>
+                                                  <RoomBadge room={presentation.room} className="mb-2" />
+                                                  {/* Authors, abstract, etc. can be added here if needed */}
+                                                </div>
+                                                <div className="flex flex-col items-end min-w-fit">
+                                                  <div className="flex items-center text-sm text-muted-foreground mb-1">
+                                                    <Clock className="h-4 w-4 mr-1" />
+                                                    {presentation.startTime} - {presentation.endTime}
+                                                  </div>
+                                                  <Badge variant="outline" className="text-xs mb-2">
+                                                    {presentation.sessionDate}
+                                                  </Badge>
+                                                  {/* Reserve button placed here, never overlays date/time */}
+                                                  <Button
+                                                    variant={reserved[presentation.id] ? "default" : "outline"}
+                                                    size="sm"
+                                                    onClick={() => handleReserve(presentation.id)}
+                                                    aria-label={reserved[presentation.id] ? "Unreserve Seat" : "Reserve Seat"}
+                                                    className="mt-1"
+                                                  >
+                                                    {reserved[presentation.id] ? (
+                                                      <BookmarkCheck className="h-4 w-4 text-green-600 mr-1" />
+                                                    ) : (
+                                                      <Bookmark className="h-4 w-4 mr-1" />
+                                                    )}
+                                                    <span className="text-xs">
+                                                      {reserved[presentation.id] ? "Reserved" : "Reserve"}
+                                                    </span>
+                                                  </Button>
+                                                </div>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* No events case - Better mobile format */}
                                   {slot.presentations.length === 0 && slot.agendaItems.length === 0 && (
-                                    <div className="text-center py-8">
-                                      <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                                    <div className="text-center py-6">
+                                      <Calendar className="h-10 w-10 text-muted-foreground mx-auto mb-2" />
                                       <p className="text-muted-foreground">No events scheduled for this time slot.</p>
                                     </div>
                                   )}
@@ -824,40 +938,58 @@ export function Dashboard() {
             {/* Quick Navigation when no event is selected */}
             {!selectedTimeSlot && (
               <Card>
-                <CardContent className="py-8 text-center">
-                  <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                  <h3 className="text-lg font-medium mb-2">Select a Session to Focus</h3>
-                  <p className="text-muted-foreground mb-4">
+                <CardContent className="py-6 sm:py-8 text-center px-3 sm:px-6">
+                  <Calendar className="h-10 w-10 sm:h-12 sm:w-12 text-muted-foreground mx-auto mb-3 sm:mb-4" />
+                  <h3 className="text-base sm:text-lg font-medium mb-2">Select a Session to Focus</h3>
+                  <p className="text-sm text-muted-foreground mb-4">
                     Choose a time slot above to view and interact with presentations in that session.
                   </p>
-                  <Button
-                    onClick={() => {
-                      const activeSlot = getTimeSlots().find(s => s.isActive);
-                      if (activeSlot) {
-                        setSelectedTimeSlot(activeSlot.time);
-                      } else {
-                        const nextSlot = getTimeSlots().find(s => !s.isPast);
-                        if (nextSlot) {
-                          setSelectedTimeSlot(nextSlot.time);
+                  <div className="flex flex-col sm:flex-row justify-center gap-2 sm:gap-3">
+                    <Button
+                      onClick={() => {
+                        const activeSlot = getTimeSlots().find(s => s.isActive);
+                        if (activeSlot) {
+                          setSelectedTimeSlot(activeSlot.time);
+                        } else {
+                          const nextSlot = getTimeSlots().find(s => !s.isPast);
+                          if (nextSlot) {
+                            setSelectedTimeSlot(nextSlot.time);
+                          }
                         }
-                      }
-                    }}
-                    className="mr-2"
-                  >
-                    <Play className="h-4 w-4 mr-2" />
-                    Focus on Current/Next Session
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => setAgendaView('timeline')}
-                  >
-                    View All Presentations
-                  </Button>
+                      }}
+                      className="w-full sm:w-auto"
+                    >
+                      <Play className="h-4 w-4 mr-2" />
+                      Go to Current/Next Session
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => setAgendaView('timeline')}
+                      className="w-full sm:w-auto"
+                    >
+                      View All Presentations
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             )}
           </div>
         )}
+      </div>
+
+      {/* Improved Floating Action Button for My Reserved on mobile */}
+      <div className="fixed bottom-4 right-4 left-4 sm:hidden z-50 flex justify-end pointer-events-none">
+        <div className="w-full flex justify-end">
+          <Button 
+            onClick={() => navigate('/my-reserved')}
+            size="lg"
+            className="rounded-full shadow-2xl flex items-center pointer-events-auto px-6 py-3 text-base"
+            style={{ minHeight: 56 }}
+          >
+            <Bookmark className="h-6 w-6 mr-2" />
+            <span>My Reserved</span>
+          </Button>
+        </div>
       </div>
     </div>
   );
