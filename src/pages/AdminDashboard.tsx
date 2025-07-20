@@ -7,11 +7,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AdminLogin } from '@/components/admin/AdminLogin';
 import { PresentationManagement } from '@/components/admin/PresentationManagement';
 import { ReportsView } from '@/components/admin/ReportsView';
-import { cleanupDuplicateVotes, recalculateAllPresentationStats, fixNanScores } from '@/lib/firebase';
+import { cleanupDuplicateVotes, recalculateAllPresentationStats, fixNanScores, db } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { Shield, BarChart3, FileText, LogOut, Database, RefreshCw, Search, CalendarClock, AlertTriangle } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { bulkImportConferencePresentations } from '../lib/importPresentations';
+import { collection, getDocs, doc, updateDoc } from 'firebase/firestore';
+import { ROOMS } from '@/types';
 
 export function AdminDashboard() {
   const { currentUser, logout } = useAuth();
@@ -23,6 +25,12 @@ export function AdminDashboard() {
   const [loggingOut, setLoggingOut] = useState(false);
   const [recalculating, setRecalculating] = useState(false);
   const [fixingScores, setFixingScores] = useState(false);
+
+  // --- Judge Assignment State ---
+  const [judges, setJudges] = useState<any[]>([]);
+  const [selectedJudgeId, setSelectedJudgeId] = useState<string>('');
+  const [selectedJudgeRooms, setSelectedJudgeRooms] = useState<string[]>([]);
+  const [savingAssignment, setSavingAssignment] = useState(false);
 
   const handleLogout = async () => {
     setLoggingOut(true);
@@ -111,6 +119,65 @@ export function AdminDashboard() {
       });
     } finally {
       setFixingScores(false);
+    }
+  };
+
+  // Load judges from backend API (must be implemented server-side)
+  useEffect(() => {
+    const fetchJudges = async () => {
+      try {
+        const res = await fetch('http://localhost:4000/api/judges');
+        const judgeList = await res.json();
+        setJudges(judgeList);
+      } catch (error) {
+        toast({
+          title: "Error",
+          description: "Failed to load judges from API.",
+          variant: "destructive",
+        });
+      }
+    };
+    fetchJudges();
+  }, []);
+
+  // When a judge is selected, load their assigned rooms
+  useEffect(() => {
+    if (!selectedJudgeId) {
+      setSelectedJudgeRooms([]);
+      return;
+    }
+    const judge = judges.find(j => j.id === selectedJudgeId);
+    setSelectedJudgeRooms(judge?.assignedRooms || []);
+  }, [selectedJudgeId, judges]);
+
+  // Save assigned rooms to Firestore and update local state
+  const handleSaveAssignment = async () => {
+    if (!selectedJudgeId) return;
+    setSavingAssignment(true);
+    try {
+      await updateDoc(doc(db, 'users', selectedJudgeId), {
+        assignedRooms: selectedJudgeRooms,
+      });
+      // Update local state so UI reflects the change immediately
+      setJudges(judges =>
+        judges.map(j =>
+          j.id === selectedJudgeId
+            ? { ...j, assignedRooms: selectedJudgeRooms }
+            : j
+        )
+      );
+      toast({
+        title: "Success",
+        description: "Judge room assignments updated.",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to update judge assignments.",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingAssignment(false);
     }
   };
 
@@ -275,7 +342,7 @@ export function AdminDashboard() {
         </div>
 
         <Tabs defaultValue="presentations" className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="presentations" className="flex items-center">
               <FileText className="h-4 w-4 mr-2" />
               Presentations
@@ -287,6 +354,10 @@ export function AdminDashboard() {
             <TabsTrigger value="data-integrity" className="flex items-center">
               <Database className="h-4 w-4 mr-2" />
               Data Integrity
+            </TabsTrigger>
+            <TabsTrigger value="judge-assignment" className="flex items-center">
+              <Shield className="h-4 w-4 mr-2" />
+              Judge Assignment
             </TabsTrigger>
           </TabsList>
 
@@ -397,6 +468,66 @@ export function AdminDashboard() {
                       </CardContent>
                     </Card>
                   </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="judge-assignment" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <Shield className="h-5 w-5 mr-2" />
+                  Assign Judges to Rooms
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block font-medium mb-1">Select Judge (registered):</label>
+                    <select
+                      className="border rounded px-3 py-2 w-full"
+                      value={selectedJudgeId}
+                      onChange={e => setSelectedJudgeId(e.target.value)}
+                    >
+                      <option value="">-- Select Judge --</option>
+                      {judges.map(judge => (
+                        <option key={judge.id} value={judge.id}>
+                          {judge.name || judge.email || judge.id}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {selectedJudgeId && (
+                    <div>
+                      <label className="block font-medium mb-1">Assign Rooms:</label>
+                      <div className="flex flex-wrap gap-2">
+                        {ROOMS.map(room => (
+                          <label key={room} className="flex items-center space-x-2">
+                            <input
+                              type="checkbox"
+                              checked={selectedJudgeRooms.includes(room)}
+                              onChange={e => {
+                                if (e.target.checked) {
+                                  setSelectedJudgeRooms([...selectedJudgeRooms, room]);
+                                } else {
+                                  setSelectedJudgeRooms(selectedJudgeRooms.filter(r => r !== room));
+                                }
+                              }}
+                            />
+                            <span>{room}</span>
+                          </label>
+                        ))}
+                      </div>
+                      <Button
+                        className="mt-4"
+                        onClick={handleSaveAssignment}
+                        disabled={savingAssignment}
+                      >
+                        {savingAssignment ? "Saving..." : "Save Assignment"}
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>

@@ -351,9 +351,20 @@ export function Dashboard() {
     if (showCurrentEvents) {
       return isCurrentEvent(presentation);
     }
-    
+
+    // Only show presentations in assigned rooms for judges
+    if (
+      currentUser?.role === 'judge' &&
+      Array.isArray((currentUser as any).assignedRooms) &&
+      (currentUser as any).assignedRooms.length > 0
+    ) {
+      if (!(currentUser as any).assignedRooms.includes(presentation.room)) {
+      return false;
+      }
+    }
+
     const matchesSearch = presentation.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         presentation.authors.some(author => author.toLowerCase().includes(searchTerm.toLowerCase()));
+      presentation.authors.some(author => author.toLowerCase().includes(searchTerm.toLowerCase()));
     const matchesRoom = selectedRoom === 'all' || presentation.room === selectedRoom;
     return matchesSearch && matchesRoom;
   });
@@ -385,6 +396,14 @@ export function Dashboard() {
         return <Calendar className="h-4 w-4" />;
     }
   };
+
+  // Filter ROOMS for judge to only show assigned rooms
+  const visibleRooms =
+    currentUser?.role === 'judge' &&
+    Array.isArray((currentUser as any).assignedRooms) &&
+    (currentUser as any).assignedRooms.length > 0
+      ? ROOMS.filter(room => (currentUser as any).assignedRooms.includes(room))
+      : ROOMS;
 
   if (loading) {
     return (
@@ -556,9 +575,15 @@ export function Dashboard() {
         {/* Dynamic Agenda & Presentations */}
         {agendaView === 'timeline' ? (
           <Tabs defaultValue="all" className="w-full">
-            <TabsList className="grid w-full grid-cols-5">
-              <TabsTrigger value="all">All ({filteredPresentations.length})</TabsTrigger>
-              {ROOMS.map(room => (
+            <TabsList
+              className={`grid w-full ${
+                visibleRooms.length > 0 ? `grid-cols-${visibleRooms.length + 1}` : 'grid-cols-1'
+              }`}
+            >
+              <TabsTrigger value="all">
+                All ({filteredPresentations.length})
+              </TabsTrigger>
+              {visibleRooms.map(room => (
                 <TabsTrigger key={room} value={room}>
                   {room} ({presentationsByRoom[room].length})
                 </TabsTrigger>
@@ -572,11 +597,11 @@ export function Dashboard() {
                     <div className="text-center">
                       <Search className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                       <p className="text-muted-foreground">
-                      {showCurrentEvents 
-                        ? "No presentations are currently happening. Check back during scheduled presentation times!"
-                        : "No presentations found matching your criteria."
-                      }
-                    </p>
+                        {showCurrentEvents
+                          ? "No presentations are currently happening. Check back during scheduled presentation times!"
+                          : "No presentations found matching your criteria."
+                        }
+                      </p>
                     </div>
                   </CardContent>
                 </Card>
@@ -594,7 +619,7 @@ export function Dashboard() {
               )}
             </TabsContent>
 
-            {ROOMS.map(room => (
+            {visibleRooms.map(room => (
               <TabsContent key={room} value={room} className="space-y-4">
                 <div className="grid gap-4">
                   {presentationsByRoom[room].map(presentation => (
