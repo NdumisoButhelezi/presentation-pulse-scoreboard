@@ -251,6 +251,17 @@ export function Dashboard() {
     return now.getHours() * 60 + now.getMinutes();
   };
 
+  // Helper to map sessionDate to Day label
+  const getDayLabel = (date: string) => {
+    const uniqueDates = Array.from(
+      new Set(
+        [...presentations.map(p => p.sessionDate), ...agendaItems.map(a => a.sessionDate)]
+      )
+    ).sort();
+    const idx = uniqueDates.indexOf(date);
+    return idx !== -1 ? `Day ${idx + 1}` : '';
+  };
+
   // Enhanced getTimeSlots to include all agenda items
   const getTimeSlots = () => {
     const slots: Array<{
@@ -267,7 +278,7 @@ export function Dashboard() {
     
     // Group presentations by start time and date
     presentations.forEach(presentation => {
-      const key = `${presentation.sessionDate}-${presentation.startTime}`;
+      const key = `${presentation.sessionDate}|${presentation.startTime}`;
       if (!timeGroups[key]) {
         timeGroups[key] = { presentations: [], agendaItems: [] };
       }
@@ -276,7 +287,7 @@ export function Dashboard() {
 
     // Group agenda items by start time and date
     agendaItems.forEach(item => {
-      const key = `${item.sessionDate}-${item.startTime}`;
+      const key = `${item.sessionDate}|${item.startTime}`;
       if (!timeGroups[key]) {
         timeGroups[key] = { presentations: [], agendaItems: [] };
       }
@@ -285,7 +296,7 @@ export function Dashboard() {
 
     // Convert to sorted time slots
     Object.entries(timeGroups).forEach(([key, group]) => {
-      const [date, time] = key.split('-');
+      const [date, time] = key.split('|');
       const currentTime = getCurrentTime();
       const slotTime = parseTime(time);
       const isToday = date === new Date().toISOString().split('T')[0];
@@ -314,8 +325,8 @@ export function Dashboard() {
 
     // Sort by date and time (ascending - earliest first)
     return slots.sort((a, b) => {
-      const [dateA, timeA] = a.time.split('-');
-      const [dateB, timeB] = b.time.split('-');
+      const [dateA, timeA] = a.time.split('|');
+      const [dateB, timeB] = b.time.split('|');
       
       // First compare dates
       const dateComparison = new Date(dateA).getTime() - new Date(dateB).getTime();
@@ -611,150 +622,179 @@ export function Dashboard() {
               </CardHeader>
               <CardContent>
                 <div className="grid gap-4">
-                  {getTimeSlots().map((slot) => (
-                    <div
-                      key={slot.time}
-                      className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
-                        selectedTimeSlot === slot.time
-                          ? 'border-primary bg-primary/5'
-                          : slot.isActive
-                          ? 'border-green-500 bg-green-50'
-                          : slot.isPast
-                          ? 'border-gray-300 bg-gray-50 opacity-75'
-                          : 'border-border hover:border-primary/50'
-                      }`}
-                      onClick={() => setSelectedTimeSlot(slot.time)}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-3">
-                          <div className="flex items-center space-x-2">
-                            <Clock className="h-4 w-4 text-muted-foreground" />
-                            <span className="font-medium">{slot.displayTime}</span>
+                  {/* Group slots by day and show day label */}
+                  {(() => {
+                    const slots = getTimeSlots();
+                    let lastDate = '';
+                    return slots.map((slot, idx) => {
+                      const [date] = slot.time.split('|');
+                      const showDay = date !== lastDate;
+                      lastDate = date;
+                      const isFocused = selectedTimeSlot === slot.time;
+                      return (
+                        <div key={slot.time}>
+                          {showDay && (
+                            <div className="mb-2 mt-4 text-lg font-bold text-primary flex items-center">
+                              <Calendar className="h-4 w-4 mr-2" />
+                              {getDayLabel(date)} &mdash; {date}
+                            </div>
+                          )}
+                          <div
+                            className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
+                              isFocused
+                                ? 'border-primary bg-primary/5'
+                                : slot.isActive
+                                ? 'border-green-500 bg-green-50'
+                                : slot.isPast
+                                ? 'border-gray-300 bg-gray-50 opacity-75'
+                                : 'border-border hover:border-primary/50'
+                            }`}
+                            onClick={() =>
+                              setSelectedTimeSlot(isFocused ? null : slot.time)
+                            }
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center space-x-3">
+                                <div className="flex items-center space-x-2">
+                                  <Clock className="h-4 w-4 text-muted-foreground" />
+                                  <span className="font-medium">{slot.displayTime}</span>
+                                </div>
+                                {slot.isActive && (
+                                  <div className="flex items-center space-x-1 text-green-600">
+                                    <Play className="h-4 w-4" />
+                                    <span className="text-sm font-medium">Live Now</span>
+                                  </div>
+                                )}
+                                {slot.hasBreak && (
+                                  <div className="flex items-center space-x-1 text-blue-600">
+                                    <Coffee className="h-4 w-4" />
+                                    <span className="text-sm">Break Time</span>
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex items-center space-x-4">
+                                {slot.agendaItems.length > 0 && (
+                                  <div className="flex items-center space-x-1 text-sm text-muted-foreground">
+                                    {getAgendaIcon(slot.agendaItems[0].type)}
+                                    <span>{slot.agendaItems[0].title}</span>
+                                  </div>
+                                )}
+                                {slot.presentations.length > 0 && (
+                                  <span className="text-sm text-muted-foreground">
+                                    {slot.presentations.length} session{slot.presentations.length !== 1 ? 's' : ''}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            {/* Show presentation titles under the slot */}
+                            <div className="flex flex-col mt-2 ml-6">
+                              {slot.presentations.length > 0 && (
+                                <ul className="list-disc pl-4 text-sm text-primary">
+                                  {slot.presentations.map((presentation) => (
+                                    <li key={presentation.id}>{presentation.title}</li>
+                                  ))}
+                                </ul>
+                              )}
+                            </div>
                           </div>
-                          {slot.isActive && (
-                            <div className="flex items-center space-x-1 text-green-600">
-                              <Play className="h-4 w-4" />
-                              <span className="text-sm font-medium">Live Now</span>
-                            </div>
-                          )}
-                          {slot.hasBreak && (
-                            <div className="flex items-center space-x-1 text-blue-600">
-                              <Coffee className="h-4 w-4" />
-                              <span className="text-sm">Break Time</span>
-                            </div>
+                          {/* Focused session content appears right below the selected card */}
+                          {isFocused && (
+                            <Card className="my-4">
+                              <CardHeader>
+                                <CardTitle className="flex items-center justify-between">
+                                  <div className="flex items-center">
+                                    <Play className="h-5 w-5 mr-2" />
+                                    Focused Session
+                                  </div>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setSelectedTimeSlot(null)}
+                                  >
+                                    Clear Focus
+                                  </Button>
+                                </CardTitle>
+                              </CardHeader>
+                              <CardContent>
+                                <div className="space-y-6">
+                                  {/* Agenda Items for this time slot */}
+                                  {slot.agendaItems.length > 0 && (
+                                    <div className="space-y-4">
+                                      <h3 className="text-lg font-semibold flex items-center">
+                                        <Calendar className="h-5 w-5 mr-2" />
+                                        Scheduled Events
+                                      </h3>
+                                      {slot.agendaItems.map(item => (
+                                        <div key={item.id} className={`p-4 rounded-lg border ${
+                                          item.isBreak ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200'
+                                        }`}>
+                                          <div className="flex items-center justify-between">
+                                            <div className="flex items-center space-x-3">
+                                              {getAgendaIcon(item.type)}
+                                              <div>
+                                                <h4 className="font-medium">{item.title}</h4>
+                                                {item.description && (
+                                                  <p className="text-sm text-muted-foreground">{item.description}</p>
+                                                )}
+                                                {item.room && (
+                                                  <p className="text-sm text-muted-foreground flex items-center mt-1">
+                                                    <MapPin className="h-3 w-3 mr-1" />
+                                                    {item.room}
+                                                  </p>
+                                                )}
+                                              </div>
+                                            </div>
+                                            <div className="text-right">
+                                              <div className="text-sm font-medium">
+                                                {formatTime(item.startTime)} - {formatTime(item.endTime)}
+                                              </div>
+                                              <div className="text-xs text-muted-foreground capitalize">
+                                                {item.type}
+                                              </div>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+
+                                  {/* Presentations for this time slot */}
+                                  {slot.presentations.length > 0 && (
+                                    <div className="space-y-4">
+                                      <h3 className="text-lg font-semibold flex items-center">
+                                        <Trophy className="h-5 w-5 mr-2" />
+                                        Presentations ({slot.presentations.length})
+                                      </h3>
+                                      <div className="grid gap-4">
+                                        {slot.presentations.map(presentation => (
+                                          <PresentationCard
+                                            key={presentation.id}
+                                            presentation={presentation}
+                                            userVote={userVotes[presentation.id]}
+                                            hasVoted={!!userVotes[presentation.id]}
+                                          />
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {slot.presentations.length === 0 && slot.agendaItems.length === 0 && (
+                                    <div className="text-center py-8">
+                                      <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                                      <p className="text-muted-foreground">No events scheduled for this time slot.</p>
+                                    </div>
+                                  )}
+                                </div>
+                              </CardContent>
+                            </Card>
                           )}
                         </div>
-                        <div className="flex items-center space-x-4">
-                          {slot.agendaItems.length > 0 && (
-                            <div className="flex items-center space-x-1 text-sm text-muted-foreground">
-                              {getAgendaIcon(slot.agendaItems[0].type)}
-                              <span>{slot.agendaItems[0].title}</span>
-                            </div>
-                          )}
-                          {slot.presentations.length > 0 && (
-                            <span className="text-sm text-muted-foreground">
-                              {slot.presentations.length} session{slot.presentations.length !== 1 ? 's' : ''}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                      );
+                    });
+                  })()}
                 </div>
               </CardContent>
             </Card>
-
-            {/* Enhanced Focused Event View */}
-            {selectedTimeSlot && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center justify-between">
-                    <div className="flex items-center">
-                      <Play className="h-5 w-5 mr-2" />
-                      Focused Session
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setSelectedTimeSlot(null)}
-                    >
-                      Clear Focus
-                    </Button>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-6">
-                    {/* Agenda Items for this time slot */}
-                    {getSelectedEventItems().agendaItems.length > 0 && (
-                      <div className="space-y-4">
-                        <h3 className="text-lg font-semibold flex items-center">
-                          <Calendar className="h-5 w-5 mr-2" />
-                          Scheduled Events
-                        </h3>
-                        {getSelectedEventItems().agendaItems.map(item => (
-                          <div key={item.id} className={`p-4 rounded-lg border ${
-                            item.isBreak ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200'
-                          }`}>
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center space-x-3">
-                                {getAgendaIcon(item.type)}
-                                <div>
-                                  <h4 className="font-medium">{item.title}</h4>
-                                  {item.description && (
-                                    <p className="text-sm text-muted-foreground">{item.description}</p>
-                                  )}
-                                  {item.room && (
-                                    <p className="text-sm text-muted-foreground flex items-center mt-1">
-                                      <MapPin className="h-3 w-3 mr-1" />
-                                      {item.room}
-                                    </p>
-                                  )}
-                                </div>
-                              </div>
-                              <div className="text-right">
-                                <div className="text-sm font-medium">
-                                  {formatTime(item.startTime)} - {formatTime(item.endTime)}
-                                </div>
-                                <div className="text-xs text-muted-foreground capitalize">
-                                  {item.type}
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Presentations for this time slot */}
-                    {getSelectedEventItems().presentations.length > 0 && (
-                      <div className="space-y-4">
-                        <h3 className="text-lg font-semibold flex items-center">
-                          <Trophy className="h-5 w-5 mr-2" />
-                          Presentations ({getSelectedEventItems().presentations.length})
-                        </h3>
-                        <div className="grid gap-4">
-                          {getSelectedEventItems().presentations.map(presentation => (
-                            <PresentationCard
-                              key={presentation.id}
-                              presentation={presentation}
-                              userVote={userVotes[presentation.id]}
-                              hasVoted={!!userVotes[presentation.id]}
-                            />
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {getSelectedEventItems().presentations.length === 0 && getSelectedEventItems().agendaItems.length === 0 && (
-                      <div className="text-center py-8">
-                        <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                        <p className="text-muted-foreground">No events scheduled for this time slot.</p>
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
 
             {/* Quick Navigation when no event is selected */}
             {!selectedTimeSlot && (
