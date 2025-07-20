@@ -14,13 +14,14 @@ interface PresentationCardProps {
   presentation: Presentation;
   userVote?: number;
   hasVoted?: boolean;
+
 }
 
 export function PresentationCard({ presentation, userVote, hasVoted }: PresentationCardProps) {
   const [isVoteModalOpen, setIsVoteModalOpen] = useState(false);
   const { currentUser } = useAuth();
 
-  // Check if this presentation is currently happening
+  // Check if this presentation ishjyjh currently happening
   const isCurrentEvent = () => {
     const now = new Date();
     const today = now.toISOString().split('T')[0];
