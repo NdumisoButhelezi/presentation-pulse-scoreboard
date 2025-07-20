@@ -8,10 +8,12 @@ import { useNavigate } from 'react-router-dom';
 import { Presentation, Vote, ROOMS } from '@/types';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { getJudgeTotal, getSafeScore, ensureValidScores, processPresenterData } from '@/lib/scores';
+import { ScoreDisplay } from '@/components/ui/score-display';
 
 interface LeaderboardEntry {
   presentation: Presentation;
-  avgJudgeScore: number;
+  judgeTotal: number; // Changed from avgJudgeScore
   spectatorLikes: number;
   finalScore: number;
   rank: number;
@@ -19,6 +21,7 @@ interface LeaderboardEntry {
 
 export function HallOfFame() {
   const navigate = useNavigate();
+  // Fix the type to match what we're storing - an array of entries per room
   const [leaderboards, setLeaderboards] = useState<Record<string, LeaderboardEntry[]>>({});
   const [overallLeaderboard, setOverallLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -30,39 +33,45 @@ export function HallOfFame() {
   const loadLeaderboards = async () => {
     try {
       const presentationsSnapshot = await getDocs(collection(db, 'presentations'));
-      const presentations = presentationsSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Presentation[];
-
-      const votesSnapshot = await getDocs(collection(db, 'votes'));
-      const votes = votesSnapshot.docs.map(doc => doc.data() as Vote);
+      const presentations = presentationsSnapshot.docs.map(doc => {
+        // Use our utility function to ensure valid scores
+        return ensureValidScores({
+          id: doc.id,
+          ...doc.data()
+        });
+      }) as Presentation[];
 
       // Calculate scores for each presentation
       const leaderboardEntries: LeaderboardEntry[] = presentations.map(presentation => {
-        const presentationVotes = votes.filter(v => v.presentationId === presentation.id);
-        const judgeVotes = presentationVotes.filter(v => v.role === 'judge');
-        const spectatorVotes = presentationVotes.filter(v => v.role === 'spectator');
-
-        const avgJudgeScore = judgeVotes.length > 0 
-          ? judgeVotes.reduce((sum, v) => sum + v.score, 0) / judgeVotes.length 
-          : 0;
-        const spectatorLikes = spectatorVotes.length;
+        // Get judge total using our utility function
+        const judgeTotal = getJudgeTotal(presentation);
         
-        // Final score calculation: 70% judge average + 30% spectator count
-        const finalScore = (avgJudgeScore * 0.7) + (spectatorLikes * 0.3);
+        // Spectator likes is simple
+        const spectatorLikes = presentation.spectatorLikes || 0;
+        
+        // Final score is equal to the judge total (sum of judge scores)
+        const finalScore = judgeTotal;
 
         return {
           presentation,
-          avgJudgeScore,
+          judgeTotal,
           spectatorLikes,
           finalScore,
           rank: 0 // Will be set after sorting
         };
       });
 
-      // Sort by final score and assign ranks
-      const sortedEntries = leaderboardEntries.sort((a, b) => b.finalScore - a.finalScore);
+      // Sort by final score (judge total) and assign ranks
+      const sortedEntries = leaderboardEntries
+        .sort((a, b) => {
+          // Primary sort by judge total
+          if (b.finalScore !== a.finalScore) {
+            return b.finalScore - a.finalScore;
+          }
+          // Use spectator likes as a tiebreaker only
+          return b.spectatorLikes - a.spectatorLikes;
+        });
+      
       sortedEntries.forEach((entry, index) => {
         entry.rank = index + 1;
       });
@@ -143,10 +152,18 @@ export function HallOfFame() {
               </div>
               <div className="text-right space-y-1">
                 <div className="text-2xl font-bold text-primary">
-                  {entry.finalScore.toFixed(2)}
+                  <ScoreDisplay 
+                    value={entry.finalScore} 
+                    maxValue={entry.presentation.judgeScores?.filter(score => score > 0).length * 25 || 0}
+                    showMax={true}
+                  />
                 </div>
                 <div className="text-xs text-muted-foreground space-y-1">
-                  <div>Judge Avg: {entry.avgJudgeScore.toFixed(1)}</div>
+                  <div>Judge Total: <ScoreDisplay 
+                    value={entry.judgeTotal} 
+                    maxValue={entry.presentation.judgeScores?.filter(score => score > 0).length * 25 || 0}
+                    showMax={true}
+                  /></div>
                   <div className="flex items-center">
                     <Users className="h-3 w-3 mr-1" />
                     {entry.spectatorLikes} likes
@@ -218,7 +235,11 @@ export function HallOfFame() {
                       {entry.presentation.authors.join(', ')}
                     </p>
                     <div className="text-2xl font-bold text-primary mb-2">
-                      {entry.finalScore.toFixed(2)}
+                      <ScoreDisplay 
+                        value={entry.finalScore} 
+                        maxValue={entry.presentation.judgeScores?.filter(score => score > 0).length * 25 || 0}
+                        showMax={true}
+                      />
                     </div>
                     <Badge variant="outline">{entry.presentation.room}</Badge>
                   </CardContent>
@@ -254,7 +275,7 @@ export function HallOfFame() {
                   <CardTitle>{room} Room Leaderboard</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <LeaderboardTable entries={leaderboards[room] || []} />
+                  <LeaderboardTable entries={leaderboards[room] ?? []} />
                 </CardContent>
               </Card>
             </TabsContent>

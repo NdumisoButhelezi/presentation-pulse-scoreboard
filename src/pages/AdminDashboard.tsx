@@ -1,4 +1,3 @@
-import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -8,15 +7,111 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AdminLogin } from '@/components/admin/AdminLogin';
 import { PresentationManagement } from '@/components/admin/PresentationManagement';
 import { ReportsView } from '@/components/admin/ReportsView';
-import { Shield, BarChart3, FileText, Users, LogOut } from 'lucide-react';
+import { cleanupDuplicateVotes, recalculateAllPresentationStats, fixNanScores } from '@/lib/firebase';
+import { useToast } from '@/hooks/use-toast';
+import { Shield, BarChart3, FileText, LogOut, Database, RefreshCw, Search, CalendarClock, AlertTriangle } from 'lucide-react';
+import { useState } from 'react';
+import { bulkImportConferencePresentations } from '../lib/importPresentations';
 
 export function AdminDashboard() {
   const { currentUser, logout } = useAuth();
   const navigate = useNavigate();
+  const { toast } = useToast();
+  const [cleaningVotes, setCleaningVotes] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [recalculating, setRecalculating] = useState(false);
+  const [fixingScores, setFixingScores] = useState(false);
 
   const handleLogout = async () => {
-    await logout();
-    navigate('/');
+    setLoggingOut(true);
+    try {
+      await logout();
+      navigate('/');
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to log out. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoggingOut(false);
+    }
+  };
+
+  const handleCleanupDuplicateVotes = async () => {
+    setCleaningVotes(true);
+    try {
+      const duplicatesRemoved = await cleanupDuplicateVotes();
+      toast({
+        title: "Cleanup Complete",
+        description: `Removed ${duplicatesRemoved} duplicate votes. Each user now has only one vote per presentation.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to clean up duplicate votes. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setCleaningVotes(false);
+    }
+  };
+
+  const handleBulkImport = async () => {
+    setImporting(true);
+    try {
+      await bulkImportConferencePresentations(toast);
+    } catch (error) {
+      toast({
+        title: "Import Error",
+        description: "Failed to import conference presentations. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const handleRecalculateStats = async () => {
+    setRecalculating(true);
+    try {
+      const count = await recalculateAllPresentationStats();
+      toast({
+        title: "Recalculation Complete",
+        description: `Successfully recalculated statistics for ${count} presentations.`,
+      });
+    } catch (error) {
+      console.error('Error recalculating stats:', error);
+      toast({
+        title: "Error",
+        description: "Failed to recalculate presentation statistics.",
+        variant: "destructive",
+      });
+    } finally {
+      setRecalculating(false);
+    }
+  };
+
+  const handleFixNanScores = async () => {
+    setFixingScores(true);
+    try {
+      const fixedCount = await fixNanScores();
+      toast({
+        title: "Fix Complete",
+        description: `Fixed ${fixedCount} presentations with NaN scores.`,
+      });
+    } catch (error) {
+      console.error('Error fixing NaN scores:', error);
+      toast({
+        title: "Error",
+        description: "Failed to fix NaN scores.",
+        variant: "destructive",
+      });
+    } finally {
+      setFixingScores(false);
+    }
   };
 
   if (!currentUser || currentUser.role !== 'admin') {
@@ -37,6 +132,16 @@ export function AdminDashboard() {
               </div>
             </div>
             <div className="flex items-center space-x-4">
+              {/* Global Search */}
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search presentations, authors, or reports..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-9 w-80"
+                />
+              </div>
               <div className="text-right">
                 <p className="font-medium">{currentUser.name}</p>
                 <p className="text-sm text-muted-foreground flex items-center">
@@ -44,9 +149,23 @@ export function AdminDashboard() {
                   Administrator
                 </p>
               </div>
-              <Button variant="outline" size="sm" onClick={handleLogout}>
-                <LogOut className="h-4 w-4 mr-2" />
-                Logout
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={handleLogout}
+                disabled={loggingOut}
+              >
+                {loggingOut ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                    Logging out...
+                  </>
+                ) : (
+                  <>
+                    <LogOut className="h-4 w-4 mr-2" />
+                    Logout
+                  </>
+                )}
               </Button>
             </div>
           </div>
@@ -54,8 +173,109 @@ export function AdminDashboard() {
       </header>
 
       <div className="container mx-auto px-4 py-6">
+        {/* Search Results Summary */}
+        {searchTerm && (
+          <Card className="mb-6 bg-blue-50 border-blue-200">
+            <CardContent className="p-4">
+              <div className="flex items-center space-x-2">
+                <Search className="h-4 w-4 text-blue-600" />
+                <span className="text-sm text-blue-800">
+                  Searching for: <strong>"{searchTerm}"</strong>
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSearchTerm('')}
+                  className="text-blue-600 hover:text-blue-800"
+                >
+                  Clear
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Quick Actions Bar - Update with new recalculate button */}
+        <div className="mb-6 flex flex-wrap gap-3">
+          <Button 
+            variant="outline" 
+            onClick={handleBulkImport}
+            disabled={importing}
+            className="flex items-center gap-2"
+          >
+            {importing ? (
+              <>
+                <RefreshCw className="h-4 w-4 animate-spin" />
+                Importing...
+              </>
+            ) : (
+              <>
+                <CalendarClock className="h-4 w-4" />
+                Import Conference Presentations
+              </>
+            )}
+          </Button>
+          
+          <Button 
+            variant="outline" 
+            onClick={handleCleanupDuplicateVotes}
+            disabled={cleaningVotes}
+            className="flex items-center gap-2"
+          >
+            {cleaningVotes ? (
+              <>
+                <RefreshCw className="h-4 w-4 animate-spin" />
+                Cleaning...
+              </>
+            ) : (
+              <>
+                <Database className="h-4 w-4" />
+                Clean Duplicate Votes
+              </>
+            )}
+          </Button>
+
+          <Button 
+            variant="outline" 
+            onClick={handleRecalculateStats}
+            disabled={recalculating}
+            className="flex items-center gap-2"
+          >
+            {recalculating ? (
+              <>
+                <RefreshCw className="h-4 w-4 animate-spin" />
+                Recalculating...
+              </>
+            ) : (
+              <>
+                <BarChart3 className="h-4 w-4" />
+                Recalculate Scores
+              </>
+            )}
+          </Button>
+
+          <Button 
+            variant="outline" 
+            onClick={handleFixNanScores}
+            disabled={fixingScores}
+            className="flex items-center gap-2"
+          >
+            {fixingScores ? (
+              <>
+                <RefreshCw className="h-4 w-4 animate-spin" />
+                Fixing NaN Scores...
+              </>
+            ) : (
+              <>
+                <AlertTriangle className="h-4 w-4" />
+                Fix NaN Scores
+              </>
+            )}
+          </Button>
+        </div>
+
         <Tabs defaultValue="presentations" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="presentations" className="flex items-center">
               <FileText className="h-4 w-4 mr-2" />
               Presentations
@@ -64,14 +284,122 @@ export function AdminDashboard() {
               <BarChart3 className="h-4 w-4 mr-2" />
               Reports & Analytics
             </TabsTrigger>
+            <TabsTrigger value="data-integrity" className="flex items-center">
+              <Database className="h-4 w-4 mr-2" />
+              Data Integrity
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="presentations" className="space-y-6">
-            <PresentationManagement />
+            <PresentationManagement searchTerm={searchTerm} />
           </TabsContent>
 
           <TabsContent value="reports" className="space-y-6">
-            <ReportsView />
+            <ReportsView searchTerm={searchTerm} />
+          </TabsContent>
+
+          <TabsContent value="data-integrity" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <Database className="h-5 w-5 mr-2" />
+                  Vote Data Integrity
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <h3 className="font-medium">Duplicate Vote Cleanup</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Ensure each user has only one vote per presentation. This removes any duplicate votes while keeping the most recent one.
+                    </p>
+                    <Button 
+                      onClick={handleCleanupDuplicateVotes}
+                      disabled={cleaningVotes}
+                      variant="outline"
+                      className="w-full sm:w-auto"
+                    >
+                      {cleaningVotes ? (
+                        <>
+                          <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                          Cleaning Up Duplicates...
+                        </>
+                      ) : (
+                        <>
+                          <Database className="h-4 w-4 mr-2" />
+                          Clean Up Duplicate Votes
+                        </>
+                      )}
+                    </Button>
+                  </div>
+
+                  {/* Progress indicator when cleaning */}
+                  {cleaningVotes && (
+                    <Card className="bg-yellow-50 border-yellow-200">
+                      <CardContent className="p-4">
+                        <div className="flex items-center space-x-2">
+                          <RefreshCw className="h-4 w-4 animate-spin text-yellow-600" />
+                          <div>
+                            <p className="text-sm font-medium text-yellow-800">
+                              Processing vote cleanup...
+                            </p>
+                            <p className="text-xs text-yellow-600">
+                              This may take a few moments depending on the amount of data.
+                            </p>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  <div className="bg-muted/50 p-4 rounded-lg">
+                    <h4 className="font-medium text-sm mb-2">Voting Rules Enforced:</h4>
+                    <ul className="text-sm text-muted-foreground space-y-1">
+                      <li>• One vote per user per presentation</li>
+                      <li>• Users can update their votes anytime</li>
+                      <li>• Judges score from 1-10, spectators like (1) or don't like (0)</li>
+                      <li>• Most recent vote is kept in case of duplicates</li>
+                    </ul>
+                  </div>
+                </div>
+
+                {/* Additional Data Integrity Tools */}
+                <div className="border-t pt-6">
+                  <h3 className="font-medium mb-4">Additional Data Tools</h3>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <Card>
+                      <CardContent className="p-4">
+                        <div className="space-y-2">
+                          <h4 className="font-medium text-sm">Export Backup</h4>
+                          <p className="text-xs text-muted-foreground">
+                            Download a complete backup of all presentation and voting data.
+                          </p>
+                          <Button variant="outline" size="sm" className="w-full">
+                            <Database className="h-3 w-3 mr-2" />
+                            Export Data
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                    
+                    <Card>
+                      <CardContent className="p-4">
+                        <div className="space-y-2">
+                          <h4 className="font-medium text-sm">Validate Data</h4>
+                          <p className="text-xs text-muted-foreground">
+                            Check for data inconsistencies and orphaned records.
+                          </p>
+                          <Button variant="outline" size="sm" className="w-full">
+                            <RefreshCw className="h-3 w-3 mr-2" />
+                            Validate
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
       </div>

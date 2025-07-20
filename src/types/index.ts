@@ -14,9 +14,10 @@ export interface Presentation {
   sessionDate: string;
   startTime: string;
   endTime: string;
+  paperId?: string; // Unique identifier for conference papers to prevent duplicates
   judgeScores?: number[];
   spectatorLikes?: number;
-  finalScore?: number;
+  categoryScores?: {[categoryId: string]: number[]}; // Store scores by category
 }
 
 export interface Vote {
@@ -37,3 +38,23 @@ export interface LeaderboardEntry {
 
 export const ROOMS = ['AZANIA', 'ALOE', 'CYCAD', 'KHANYA'] as const;
 export type Room = typeof ROOMS[number];
+
+export interface JudgeRating {
+  categoryId: string;
+  score: number;
+}
+
+export interface JudgeVote {
+  userId: string;
+  presentationId: string;
+  ratings: JudgeRating[];
+  totalScore: number; // Pre-calculated total for efficiency
+  timestamp: Date;
+}
+
+export interface ScoringCategory {
+  id: string;
+  name: string;
+  description: string;
+  weight: number; // For weighted scoring
+}

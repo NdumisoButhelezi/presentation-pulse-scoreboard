@@ -8,14 +8,16 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { Presentation, Vote, ROOMS } from '@/types';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { BarChart3, PieChart as PieChartIcon, Download, Users, Trophy, TrendingUp } from 'lucide-react';
+import { BarChart3, PieChart as PieChartIcon, Download, Users, Trophy, TrendingUp, RefreshCw } from 'lucide-react';
+import { ScoreDisplay, ScoreTableCell } from '@/components/ui/score-display';
+import { processTableData, getJudgeTotal } from '@/lib/scores';
 
 interface ReportData {
   presentations: Presentation[];
   votes: Vote[];
   leaderboard: Array<{
     presentation: Presentation;
-    avgJudgeScore: number;
+    judgeTotal: number; // Changed from avgJudgeScore to judgeTotal
     spectatorLikes: number;
     finalScore: number;
     rank: number;
@@ -30,9 +32,15 @@ interface ReportData {
   };
 }
 
-export function ReportsView() {
+interface ReportsViewProps {
+  searchTerm?: string;
+}
+
+export function ReportsView({ searchTerm = '' }: ReportsViewProps) {
   const [reportData, setReportData] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     loadReportData();
@@ -42,9 +50,23 @@ export function ReportsView() {
     try {
       // Load presentations
       const presentationsSnapshot = await getDocs(collection(db, 'presentations'));
-      const presentations = presentationsSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
+      const presentations = processTableData(presentationsSnapshot.docs.map(doc => {
+        const data = doc.data();
+        const id = doc.id;
+        
+        // Add debug for specific presentation
+        if (data.title?.includes("Performance Analysis")) {
+          console.log("Loading target presentation in ReportsView:", {
+            id,
+            title: data.title,
+            judgeScores: data.judgeScores,
+            rawSum: Array.isArray(data.judgeScores) ? 
+              data.judgeScores.reduce((sum: number, score: number) => sum + score, 0) : 
+              'No scores'
+          });
+        }
+        
+        return { id, ...data };
       })) as Presentation[];
 
       // Load votes
@@ -55,21 +77,30 @@ export function ReportsView() {
       const usersSnapshot = await getDocs(collection(db, 'users'));
       const users = usersSnapshot.docs.map(doc => doc.data());
 
-      // Calculate leaderboard
+      // Calculate leaderboard using Judge Total - pure addition only
       const leaderboard = presentations.map(presentation => {
-        const presentationVotes = votes.filter(v => v.presentationId === presentation.id);
-        const judgeVotes = presentationVotes.filter(v => v.role === 'judge');
-        const spectatorVotes = presentationVotes.filter(v => v.role === 'spectator');
+        // Get judge total score - pure sum of all judge scores
+        const judgeTotal = getJudgeTotal(presentation);
+        const spectatorLikes = presentation.spectatorLikes || 0;
+        
+        // Final score is equal to the judge total (pure sum)
+        const finalScore = judgeTotal;
 
-        const avgJudgeScore = judgeVotes.length > 0 
-          ? judgeVotes.reduce((sum, v) => sum + v.score, 0) / judgeVotes.length 
-          : 0;
-        const spectatorLikes = spectatorVotes.length;
-        const finalScore = (avgJudgeScore * 0.7) + (spectatorLikes * 0.3);
+        // Add debug
+        if (presentation.title?.includes("Performance Analysis")) {
+          console.log("Processing target presentation in leaderboard:", {
+            id: presentation.id, 
+            title: presentation.title,
+            judgeScores: presentation.judgeScores,
+            judgeTotal,
+            finalScore,
+            calculation: `Sum of ${presentation.judgeScores?.join(" + ")} = ${judgeTotal}`
+          });
+        }
 
         return {
           presentation,
-          avgJudgeScore,
+          judgeTotal,
           spectatorLikes,
           finalScore,
           rank: 0
@@ -141,6 +172,44 @@ export function ReportsView() {
 
   const COLORS = ['#8884d8', '#82ca9d', '#ffc658', '#ff7300', '#8dd1e1'];
 
+  // Filter presentations based on search term
+  const filteredPresentations = reportData?.presentations.filter(presentation => {
+    if (!searchTerm) return true;
+    
+    const searchLower = searchTerm.toLowerCase();
+    return (
+      presentation.title.toLowerCase().includes(searchLower) ||
+      presentation.authors.some(author => author.toLowerCase().includes(searchLower)) ||
+      presentation.room.toLowerCase().includes(searchLower)
+    );
+  }) || [];
+
+  const handleGenerateReport = async () => {
+    setGenerating(true);
+    try {
+      // Simulate report generation logic
+      await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate processing
+      // TODO: Implement actual report generation logic
+    } catch (error) {
+      console.error('Error generating report:', error);
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const handleExportData = async () => {
+    setExporting(true);
+    try {
+      // Simulate data export logic
+      await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate processing
+      // TODO: Implement actual data export logic
+    } catch (error) {
+      console.error('Error exporting data:', error);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -156,27 +225,77 @@ export function ReportsView() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold">Reports & Analytics</h2>
-        <Button 
-          variant="outline"
-          onClick={() => exportToCSV(
-            reportData.leaderboard.map(entry => ({
-              rank: entry.rank,
-              title: entry.presentation.title,
-              authors: entry.presentation.authors.join('; '),
-              room: entry.presentation.room,
-              avgJudgeScore: entry.avgJudgeScore.toFixed(2),
-              spectatorLikes: entry.spectatorLikes,
-              finalScore: entry.finalScore.toFixed(2)
-            })),
-            'ictas2025-leaderboard.csv'
+      {/* Search Results Info */}
+      {searchTerm && (
+        <Card className="bg-blue-50 border-blue-200">
+          <CardContent className="p-4">
+            <p className="text-sm text-blue-800">
+              Reports filtered for {filteredPresentations.length} presentations matching "{searchTerm}"
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Quick Actions with Progress */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Report Actions</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            <Button 
+              onClick={handleGenerateReport}
+              disabled={generating}
+              className="w-full"
+            >
+              {generating ? (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  Generating Report...
+                </>
+              ) : (
+                <>
+                  <BarChart3 className="h-4 w-4 mr-2" />
+                  Generate Full Report
+                </>
+              )}
+            </Button>
+            
+            <Button 
+              variant="outline"
+              onClick={handleExportData}
+              disabled={exporting}
+              className="w-full"
+            >
+              {exporting ? (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  Exporting Data...
+                </>
+              ) : (
+                <>
+                  <Download className="h-4 w-4 mr-2" />
+                  Export CSV
+                </>
+              )}
+            </Button>
+          </div>
+
+          {/* Progress indicators */}
+          {(generating || exporting) && (
+            <Card className="bg-blue-50 border-blue-200">
+              <CardContent className="p-4">
+                <div className="flex items-center space-x-2">
+                  <RefreshCw className="h-4 w-4 animate-spin text-blue-600" />
+                  <span className="text-sm text-blue-800">
+                    {generating ? 'Generating comprehensive report...' : 'Preparing data export...'}
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
           )}
-        >
-          <Download className="h-4 w-4 mr-2" />
-          Export Leaderboard
-        </Button>
-      </div>
+        </CardContent>
+      </Card>
 
       {/* Overview Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -333,7 +452,7 @@ export function ReportsView() {
                     <TableHead>Title</TableHead>
                     <TableHead>Authors</TableHead>
                     <TableHead>Room</TableHead>
-                    <TableHead className="text-right">Judge Avg</TableHead>
+                    <TableHead className="text-right">Judge Total</TableHead> {/* Changed from Judge Avg */}
                     <TableHead className="text-right">Spectator Likes</TableHead>
                     <TableHead className="text-right">Final Score</TableHead>
                   </TableRow>
@@ -363,10 +482,12 @@ export function ReportsView() {
                       <TableCell>
                         <Badge variant="outline">{entry.presentation.room}</Badge>
                       </TableCell>
-                      <TableCell className="text-right">{entry.avgJudgeScore.toFixed(2)}</TableCell>
+                      <TableCell className="text-right">
+                        <ScoreDisplay value={entry.judgeTotal} />
+                      </TableCell>
                       <TableCell className="text-right">{entry.spectatorLikes}</TableCell>
                       <TableCell className="text-right font-bold">
-                        {entry.finalScore.toFixed(2)}
+                        <ScoreDisplay value={entry.finalScore} />
                       </TableCell>
                     </TableRow>
                   ))}
@@ -376,6 +497,69 @@ export function ReportsView() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Presentation Scores - Filtered */}
+      <Card>
+        <CardHeader>
+          <CardTitle>
+            Presentation Scores
+            {searchTerm && ` (filtered: ${filteredPresentations.length})`}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-16">Rank</TableHead>
+                <TableHead>Title</TableHead>
+                <TableHead>Authors</TableHead>
+                <TableHead>Room</TableHead>
+                <TableHead className="text-right">Judge Total</TableHead> {/* Changed from Judge Avg */}
+                <TableHead className="text-right">Spectator Likes</TableHead>
+                <TableHead className="text-right">Final Score</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredPresentations.map((presentation, index) => {
+                const entry = reportData.leaderboard.find(e => e.presentation.id === presentation.id);
+                return (
+                  <TableRow key={presentation.id}>
+                    <TableCell className="font-medium">
+                      <Badge variant={
+                        entry?.rank === 1 ? "default" :
+                        entry?.rank === 2 ? "secondary" :
+                        entry?.rank === 3 ? "outline" : "outline"
+                      }>
+                        #{entry?.rank}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="font-medium max-w-xs">
+                      <div className="truncate" title={presentation.title}>
+                        {presentation.title}
+                      </div>
+                    </TableCell>
+                    <TableCell className="max-w-xs">
+                      <div className="truncate" title={presentation.authors.join(', ')}>
+                        {presentation.authors.join(', ')}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline">{presentation.room}</Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <ScoreDisplay value={entry?.judgeTotal} />
+                    </TableCell>
+                    <TableCell className="text-right">{entry?.spectatorLikes}</TableCell>
+                    <TableCell className="text-right font-bold">
+                      <ScoreDisplay value={entry?.finalScore} />
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
     </div>
   );
 }
