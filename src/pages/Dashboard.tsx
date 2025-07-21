@@ -14,6 +14,8 @@ import { db } from '@/lib/firebase';
 import { Search, Filter, Trophy, Users, LogOut, RefreshCw, ThumbsUp, Calendar, Clock, MapPin, Play, Coffee, Utensils, Bookmark, BookmarkCheck } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useNavigate } from 'react-router-dom';
+import { ParticleBackground } from '@/components/ui/ParticleBackground';
+import { Skeleton } from '@/components/ui/skeleton';
 
 // Add agenda item types
 interface AgendaItem {
@@ -428,18 +430,49 @@ export function Dashboard() {
 
   // Handle seat reservation toggle
   const handleReserve = (presentationId: string) => {
-    setReserved(prev => ({
-      ...prev,
-      [presentationId]: !prev[presentationId]
-    }));
+    try {
+      setReserved(prev => {
+        const newReserved = {
+          ...prev,
+          [presentationId]: !prev[presentationId]
+        };
+        localStorage.setItem('reservedSeats', JSON.stringify(newReserved));
+        toast({
+          title: newReserved[presentationId] ? 'Seat Reserved' : 'Reservation Removed',
+          description: newReserved[presentationId]
+            ? 'You have reserved a seat for this presentation.'
+            : 'Your reservation for this presentation has been removed.',
+          variant: 'default',
+        });
+        return newReserved;
+      });
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to update reservation. Please try again.',
+        variant: 'destructive',
+      });
+    }
   };
 
   if (loading) {
+    // Show skeleton cards instead of spinner
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center space-y-4">
-          <RefreshCw className="h-8 w-8 animate-spin text-primary mx-auto" />
-          <p className="text-muted-foreground">Loading presentations...</p>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-background via-secondary/20 to-primary/5">
+        <div className="w-full max-w-5xl px-2 sm:px-8 py-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="rounded-2xl shadow-lg bg-white/80 p-0 flex flex-col animate-pulse">
+              <Skeleton className="h-8 w-3/4 rounded-lg mb-2 mt-4 mx-4" />
+              <Skeleton className="h-4 w-1/2 rounded mb-2 mx-4" />
+              <Skeleton className="h-4 w-5/6 rounded mb-4 mx-4" />
+              <Skeleton className="h-3 w-full rounded mb-2 mx-4" />
+              <Skeleton className="h-3 w-2/3 rounded mb-2 mx-4" />
+              <div className="flex-1" />
+              <div className="flex items-center justify-end gap-2 pt-4 px-4 pb-3 border-t mt-3">
+                <Skeleton className="h-8 w-24 rounded" />
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     );
@@ -447,52 +480,66 @@ export function Dashboard() {
 
   return (
     <div className="main-container min-h-screen bg-gradient-to-br from-background via-secondary/20 to-primary/5">
+      <ParticleBackground />
       {/* Header */}
-      <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-10 w-full">
-        <div className="w-full px-2 sm:px-8 py-4">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-2">
-            <div className="flex items-center space-x-4">
-              <Trophy className="h-8 w-8 text-primary" />
-              <div>
-                <h1 className="text-2xl font-bold">Presentation Pulse</h1>
-                <p className="text-sm text-muted-foreground">Real-time Scoring Dashboard</p>
-              </div>
+      <header className="sticky top-0 z-20 w-full bg-white/30 backdrop-blur-lg border-b border-white/30 shadow-lg transition-all duration-300">
+        <div className="w-full px-2 sm:px-8 py-4 flex flex-col sm:flex-row items-center justify-between gap-2">
+          <div className="flex items-center space-x-4">
+            {/* Animated logo with pulse */}
+            <div className="relative flex items-center justify-center">
+              <Trophy className="h-10 w-10 text-primary animate-pulse-slow drop-shadow-lg" />
+              <span className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-3 h-3 bg-primary/30 rounded-full blur-sm animate-pulse" />
             </div>
-            <div className="flex items-center space-x-4">
-              {(getCurrentEvents().presentations.length > 0 || getCurrentEvents().agendaItems.length > 0) && (
-                <div className="hidden sm:flex items-center space-x-2 px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">
-                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                  <span className="font-medium">
-                    {getCurrentEvents().presentations.length + getCurrentEvents().agendaItems.length} Live Event{getCurrentEvents().presentations.length + getCurrentEvents().agendaItems.length !== 1 ? 's' : ''}
-                  </span>
-                </div>
-              )}
-              <div className="text-right">
-                <p className="font-medium">{currentUser?.name}</p>
-                <p className="text-sm text-muted-foreground capitalize flex items-center">
-                  {currentUser?.role === 'judge' ? (
-                    <Trophy className="h-4 w-4 mr-1" />
-                  ) : (
-                    <Users className="h-4 w-4 mr-1" />
-                  )}
-                  {currentUser?.role}
-                </p>
-              </div>
-              {/* Add My Reserved button in header for larger screens */}
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => navigate('/my-reserved')}
-                className="hidden sm:flex"
-              >
-                <Bookmark className="h-4 w-4 mr-2" />
-                My Reserved
-              </Button>
-              <Button variant="outline" size="sm" onClick={handleLogout}>
-                <LogOut className="h-4 w-4 mr-2" />
-                <span className="sm:inline hidden">Logout</span>
-              </Button>
+            <div>
+              <h1 className="text-2xl font-extrabold tracking-tight text-primary drop-shadow-sm">Presentation Pulse</h1>
+              <p className="text-sm text-muted-foreground font-medium">Real-time Scoring Dashboard</p>
             </div>
+          </div>
+          <div className="flex items-center space-x-4">
+            {(getCurrentEvents().presentations.length > 0 || getCurrentEvents().agendaItems.length > 0) && (
+              <div className="hidden sm:flex items-center space-x-2 px-3 py-1 bg-green-100/80 text-green-800 rounded-full text-sm shadow-md">
+                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                <span className="font-medium">
+                  {getCurrentEvents().presentations.length + getCurrentEvents().agendaItems.length} Live Event{getCurrentEvents().presentations.length + getCurrentEvents().agendaItems.length !== 1 ? 's' : ''}
+                </span>
+              </div>
+            )}
+            {/* User profile section with better hierarchy */}
+            <div className="flex flex-col items-end text-right bg-white/60 rounded-lg px-3 py-1 shadow-sm border border-white/40">
+              <p className="font-semibold text-primary text-base leading-tight">{currentUser?.name}</p>
+              <p className="text-xs text-muted-foreground capitalize flex items-center gap-1">
+                {currentUser?.role === 'judge' ? (
+                  <Trophy className="h-4 w-4 mr-1 text-primary" />
+                ) : (
+                  <Users className="h-4 w-4 mr-1 text-accent" />
+                )}
+                {currentUser?.role}
+              </p>
+            </div>
+            {/* Improved search bar styling */}
+            <div className="relative ml-2">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-primary/60" />
+              <Input
+                placeholder="Search presentations or authors..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-9 w-56 min-w-0 rounded-lg border border-primary/20 bg-white/70 shadow-inner focus:ring-2 focus:ring-primary/30 transition-all"
+              />
+            </div>
+            {/* My Reserved and Logout buttons */}
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => navigate('/my-reserved')}
+              className="hidden sm:flex ml-2"
+            >
+              <Bookmark className="h-4 w-4 mr-2" />
+              My Reserved
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleLogout} className="ml-2">
+              <LogOut className="h-4 w-4 mr-2" />
+              <span className="sm:inline hidden">Logout</span>
+            </Button>
           </div>
         </div>
       </header>
@@ -530,15 +577,6 @@ export function Dashboard() {
           </CardHeader>
           <CardContent className="p-0 sm:p-0 px-2 sm:px-8 pt-0 pb-8">
             <div className="flex flex-col gap-3">
-              <div className="flex-1 relative min-w-0">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search presentations or authors..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-9 w-full min-w-0"
-                />
-              </div>
               <div className="grid grid-cols-2 sm:flex gap-2 min-w-0">
                 <Select value={selectedRoom} onValueChange={setSelectedRoom}>
                   <SelectTrigger className="w-full">
@@ -653,29 +691,14 @@ export function Dashboard() {
               ) : (
                 <div className="grid gap-4">
                   {filteredPresentations.map(presentation => (
-                    <div key={presentation.id} className="relative">
-                      <PresentationCard
-                        presentation={presentation}
-                        userVote={userVotes[presentation.id]}
-                        hasVoted={!!userVotes[presentation.id]}
-                      />
-                      <Button
-                        variant={reserved[presentation.id] ? "default" : "outline"}
-                        size="sm"
-                        className="absolute top-16 right-2 shadow-sm" 
-                        onClick={() => handleReserve(presentation.id)}
-                        aria-label={reserved[presentation.id] ? "Unreserve Seat" : "Reserve Seat"}
-                      >
-                        {reserved[presentation.id] ? (
-                          <BookmarkCheck className="h-4 w-4 text-green-600 mr-1" />
-                        ) : (
-                          <Bookmark className="h-4 w-4 mr-1" />
-                        )}
-                        <span className="text-xs hidden sm:inline">
-                          {reserved[presentation.id] ? "Reserved" : "Reserve"}
-                        </span>
-                      </Button>
-                    </div>
+                    <PresentationCard
+                      key={presentation.id}
+                      presentation={presentation}
+                      userVote={userVotes[presentation.id]}
+                      hasVoted={!!userVotes[presentation.id]}
+                      reserved={!!reserved[presentation.id]}
+                      onReserve={() => handleReserve(presentation.id)}
+                    />
                   ))}
                 </div>
               )}
@@ -685,27 +708,14 @@ export function Dashboard() {
               <TabsContent key={room} value={room} className="space-y-4 w-full px-2 sm:px-8 min-w-0">
                 <div className="grid gap-4">
                   {presentationsByRoom[room].map(presentation => (
-                    <div key={presentation.id} className="relative">
-                      <PresentationCard
-                        presentation={presentation}
-                        userVote={userVotes[presentation.id]}
-                        hasVoted={!!userVotes[presentation.id]}
-                      />
-                      {/* Reserve Seat Button - MOVED LOWER */}
-                      <Button
-                        variant={reserved[presentation.id] ? "default" : "outline"}
-                        size="icon"
-                        className="absolute top-16 right-2"
-                        onClick={() => handleReserve(presentation.id)}
-                        aria-label={reserved[presentation.id] ? "Unreserve Seat" : "Reserve Seat"}
-                      >
-                        {reserved[presentation.id] ? (
-                          <BookmarkCheck className="h-5 w-5 text-green-600" />
-                        ) : (
-                          <Bookmark className="h-5 w-5" />
-                        )}
-                      </Button>
-                    </div>
+                    <PresentationCard
+                      key={presentation.id}
+                      presentation={presentation}
+                      userVote={userVotes[presentation.id]}
+                      hasVoted={!!userVotes[presentation.id]}
+                      reserved={!!reserved[presentation.id]}
+                      onReserve={() => handleReserve(presentation.id)}
+                    />
                   ))}
                 </div>
               </TabsContent>
@@ -879,7 +889,6 @@ export function Dashboard() {
                                               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                                                 <div className="flex-1 min-w-0">
                                                   <CardTitle className="text-lg leading-tight mb-2">{presentation.title}</CardTitle>
-                                                  <RoomBadge room={presentation.room} className="mb-2" />
                                                   {/* Authors, abstract, etc. can be added here if needed */}
                                                 </div>
                                                 <div className="flex flex-col items-end min-w-fit">
@@ -890,24 +899,29 @@ export function Dashboard() {
                                                   <Badge variant="outline" className="text-xs mb-2">
                                                     {presentation.sessionDate}
                                                   </Badge>
-                                                  {/* Reserve button placed here, never overlays date/time */}
-                                                  <Button
-                                                    variant={reserved[presentation.id] ? "default" : "outline"}
-                                                    size="sm"
-                                                    onClick={() => handleReserve(presentation.id)}
-                                                    aria-label={reserved[presentation.id] ? "Unreserve Seat" : "Reserve Seat"}
-                                                    className="mt-1"
-                                                  >
-                                                    {reserved[presentation.id] ? (
-                                                      <BookmarkCheck className="h-4 w-4 text-green-600 mr-1" />
-                                                    ) : (
-                                                      <Bookmark className="h-4 w-4 mr-1" />
-                                                    )}
-                                                    <span className="text-xs">
-                                                      {reserved[presentation.id] ? "Reserved" : "Reserve"}
-                                                    </span>
-                                                  </Button>
                                                 </div>
+                                              </div>
+                                              {/* Card content here */}
+                                              <div className="flex-1" />
+                                              {/* Action row at the bottom */}
+                                              <div className="flex items-center justify-between gap-2 pt-4 px-4 pb-3 border-t mt-3">
+                                                <Button
+                                                  variant={reserved[presentation.id] ? "default" : "outline"}
+                                                  size="sm"
+                                                  onClick={() => handleReserve(presentation.id)}
+                                                  aria-label={reserved[presentation.id] ? "Unreserve Seat" : "Reserve Seat"}
+                                                >
+                                                  {reserved[presentation.id] ? (
+                                                    <BookmarkCheck className="h-4 w-4 text-green-600 mr-1" />
+                                                  ) : (
+                                                    <Bookmark className="h-4 w-4 mr-1" />
+                                                  )}
+                                                  <span className="text-xs">
+                                                    {reserved[presentation.id] ? "Reserved" : "Reserve"}
+                                                  </span>
+                                                </Button>
+                                                {/* Placeholder for other actions, e.g., Vote Now button */}
+                                                {/* <Button variant="gradient">Vote Now</Button> */}
                                               </div>
                                             </div>
                                           </div>

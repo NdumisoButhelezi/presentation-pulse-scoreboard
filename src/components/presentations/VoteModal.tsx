@@ -228,7 +228,7 @@ export function VoteModal({ presentation, isOpen, onClose, currentVote }: VoteMo
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className={`${currentUser?.role === 'judge' ? 'sm:max-w-lg' : 'sm:max-w-md'} max-h-[90vh] overflow-y-auto`}>
+      <DialogContent className={`${currentUser?.role === 'judge' ? 'sm:max-w-lg' : 'sm:max-w-md'} max-h-[90vh] overflow-y-auto bg-white/90 backdrop-blur-xl shadow-2xl border-2 border-primary/10 transition-all duration-300`}>
         <DialogHeader>
           <DialogTitle className="flex items-center space-x-2">
             {currentUser?.role === 'judge' ? (
