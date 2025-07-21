@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Presentation, ROOMS } from '@/types';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { Plus, Edit, Trash2, Upload, RefreshCw, AlertTriangle, FileText } from 'lucide-react';
+import { Plus, Edit, Trash2, Upload, RefreshCw, AlertTriangle, FileText, Search, Filter } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { bulkImportConferencePresentations } from '@/lib/importPresentations';
 
@@ -27,6 +27,7 @@ export function PresentationManagement({ searchTerm = '' }: PresentationManageme
   const [deleting, setDeleting] = useState<string | null>(null);
   const [editingPresentation, setEditingPresentation] = useState<Presentation | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [filterRoom, setFilterRoom] = useState<string>('all');
 
   const [formData, setFormData] = useState({
     title: '',
@@ -99,15 +100,23 @@ export function PresentationManagement({ searchTerm = '' }: PresentationManageme
       title: formData.title,
       authors: formData.authors.split(',').map(a => a.trim()),
       abstract: formData.abstract,
-      room: formData.room as any,
+      room: formData.room,
       sessionDate: formData.sessionDate,
       startTime: formData.startTime,
-      endTime: formData.endTime
+      endTime: formData.endTime,
+      judgeScores: [],
+      spectatorLikes: 0,
+      totalVotes: 0,
+      createdAt: new Date(),
+      updatedAt: new Date()
     };
 
     try {
       if (editingPresentation) {
-        await updateDoc(doc(db, 'presentations', editingPresentation.id), presentationData);
+        await updateDoc(doc(db, 'presentations', editingPresentation.id), {
+          ...presentationData,
+          updatedAt: new Date()
+        });
         toast({
           title: "Success",
           description: "Presentation updated successfully",
@@ -120,8 +129,8 @@ export function PresentationManagement({ searchTerm = '' }: PresentationManageme
         });
       }
       
-      resetForm();
       setIsDialogOpen(false);
+      resetForm();
       loadPresentations();
     } catch (error) {
       console.error('Error saving presentation:', error);
@@ -137,213 +146,355 @@ export function PresentationManagement({ searchTerm = '' }: PresentationManageme
     setEditingPresentation(presentation);
     setFormData({
       title: presentation.title,
-      authors: presentation.authors.join(', '),
-      abstract: presentation.abstract,
-      room: presentation.room,
-      sessionDate: presentation.sessionDate,
-      startTime: presentation.startTime,
-      endTime: presentation.endTime
+      authors: presentation.authors?.join(', ') || '',
+      abstract: presentation.abstract || '',
+      room: presentation.room || '',
+      sessionDate: presentation.sessionDate || '',
+      startTime: presentation.startTime || '',
+      endTime: presentation.endTime || ''
     });
     setIsDialogOpen(true);
   };
 
   const handleDelete = async (id: string) => {
-    if (confirm('Are you sure you want to delete this presentation?')) {
-      setDeleting(id);
-      try {
-        await deleteDoc(doc(db, 'presentations', id));
-        toast({
-          title: "Success",
-          description: "Presentation deleted successfully",
-        });
-        loadPresentations();
-      } catch (error) {
-        console.error('Error deleting presentation:', error);
-        toast({
-          title: "Error",
-          description: "Failed to delete presentation",
-          variant: "destructive",
-        });
-      } finally {
-        setDeleting(null);
-      }
+    if (!confirm('Are you sure you want to delete this presentation?')) return;
+    
+    setDeleting(id);
+    try {
+      await deleteDoc(doc(db, 'presentations', id));
+      toast({
+        title: "Success",
+        description: "Presentation deleted successfully",
+      });
+      loadPresentations();
+    } catch (error) {
+      console.error('Error deleting presentation:', error);
+      toast({
+        title: "Error",
+        description: "Failed to delete presentation",
+        variant: "destructive",
+      });
+    } finally {
+      setDeleting(null);
     }
   };
 
   const handleDeleteAll = async () => {
-    const confirmMessage = `Are you sure you want to delete ALL ${presentations.length} presentations? This action cannot be undone.`;
+    if (!confirm('Are you sure you want to delete ALL presentations? This action cannot be undone.')) return;
     
-    if (confirm(confirmMessage)) {
-      try {
-        // Delete all presentations
-        const deletePromises = presentations.map(presentation => 
-          deleteDoc(doc(db, 'presentations', presentation.id))
-        );
-        
-        await Promise.all(deletePromises);
-        
-        toast({
-          title: "Success", 
-          description: `Successfully deleted all ${presentations.length} presentations`,
-        });
-        
-        loadPresentations();
-      } catch (error) {
-        console.error('Error deleting all presentations:', error);
-        toast({
-          title: "Error",
-          description: "Failed to delete all presentations",
-          variant: "destructive",
-        });
-      }
+    setDeleting('all');
+    try {
+      const snapshot = await getDocs(collection(db, 'presentations'));
+      const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref));
+      await Promise.all(deletePromises);
+      
+      toast({
+        title: "Success",
+        description: "All presentations deleted successfully",
+      });
+      loadPresentations();
+    } catch (error) {
+      console.error('Error deleting all presentations:', error);
+      toast({
+        title: "Error",
+        description: "Failed to delete all presentations",
+        variant: "destructive",
+      });
+    } finally {
+      setDeleting(null);
     }
   };
 
   const handleBulkImport = async () => {
+    setUploading(true);
+    setUploadProgress(0);
     try {
       await bulkImportConferencePresentations(toast);
-      loadPresentations(); // Reload presentations after import
+      setUploadProgress(100);
+      toast({
+        title: "Import Complete",
+        description: "Conference presentations imported successfully",
+      });
+      loadPresentations();
     } catch (error) {
       console.error('Error importing presentations:', error);
       toast({
-        title: "Error",
+        title: "Import Error",
         description: "Failed to import presentations",
         variant: "destructive",
       });
+    } finally {
+      setUploading(false);
+      setUploadProgress(0);
     }
   };
-
-  // Filter presentations based on search term
-  const filteredPresentations = presentations.filter(presentation => {
-    if (!searchTerm) return true;
-    
-    const searchLower = searchTerm.toLowerCase();
-    return (
-      presentation.title.toLowerCase().includes(searchLower) ||
-      presentation.authors.some(author => author.toLowerCase().includes(searchLower)) ||
-      presentation.room.toLowerCase().includes(searchLower) ||
-      presentation.sessionDate.includes(searchTerm) ||
-      presentation.startTime.includes(searchTerm)
-    );
-  });
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    
+
     setUploading(true);
     setUploadProgress(0);
+    
     try {
-      // Mock upload progress
-      const interval = setInterval(() => {
-        setUploadProgress(prev => {
-          if (prev >= 90) {
-            clearInterval(interval);
-            return 90;
-          }
-          return prev + 10;
-        });
-      }, 300);
+      const text = await file.text();
+      const lines = text.split('\n').filter(line => line.trim());
       
-      // Here you would implement the actual file parsing logic
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const [title, authors, abstract, room, sessionDate, startTime, endTime] = line.split('|');
+        
+        if (title && authors) {
+          await addDoc(collection(db, 'presentations'), {
+            title: title.trim(),
+            authors: authors.split(',').map(a => a.trim()),
+            abstract: abstract?.trim() || '',
+            room: room?.trim() || '',
+            sessionDate: sessionDate?.trim() || '',
+            startTime: startTime?.trim() || '',
+            endTime: endTime?.trim() || '',
+            judgeScores: [],
+            spectatorLikes: 0,
+            totalVotes: 0,
+            createdAt: new Date(),
+            updatedAt: new Date()
+          });
+        }
+        
+        setUploadProgress((i / lines.length) * 100);
+      }
       
-      // Simulate completion
-      setTimeout(() => {
-        clearInterval(interval);
-        setUploadProgress(100);
-        toast({
-          title: "Success",
-          description: `Uploaded presentations successfully.`,
-        });
-        loadPresentations();
-      }, 3000);
+      toast({
+        title: "Upload Complete",
+        description: "Presentations uploaded successfully",
+      });
+      loadPresentations();
     } catch (error) {
       console.error('Error uploading file:', error);
       toast({
-        title: "Error",
-        description: "Failed to upload file",
+        title: "Upload Error",
+        description: "Failed to upload presentations",
         variant: "destructive",
       });
     } finally {
-      setTimeout(() => {
-        setUploading(false);
-        setUploadProgress(0);
-      }, 4000);
+      setUploading(false);
+      setUploadProgress(0);
     }
   };
 
-  // Now return the actual JSX for the component
+  // Filter presentations based on search term and room filter
+  const filteredPresentations = presentations.filter(presentation => {
+    const matchesSearch = !searchTerm || 
+      presentation.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      presentation.authors?.some(author => 
+        author.toLowerCase().includes(searchTerm.toLowerCase())
+      ) ||
+      presentation.abstract?.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const matchesRoom = filterRoom === 'all' || presentation.room === filterRoom;
+    
+    return matchesSearch && matchesRoom;
+  });
+
   return (
     <div className="space-y-6">
-      {/* Search Results Info */}
-      {searchTerm && (
-        <Card className="bg-blue-50 border-blue-200">
-          <CardContent className="p-4">
-            <p className="text-sm text-blue-800">
-              Showing {filteredPresentations.length} of {presentations.length} presentations matching "{searchTerm}"
-            </p>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Upload Section with Progress */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Upload Presentations</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Add the new bulk import button */}
-          <div className="flex gap-4 flex-wrap">
-            <Button
-              onClick={handleBulkImport}
-              variant="outline"
-              className="w-full sm:w-auto"
-            >
-              <Upload className="h-4 w-4 mr-2" />
-              Import Conference Presentations
-            </Button>
-            
-            <Input
-              type="file"
-              accept=".csv"
-              onChange={handleFileUpload}
-              disabled={uploading}
-              className="hidden"
-              id="csv-file-input"
-            />
-            <Button 
-              onClick={() => (document.getElementById('csv-file-input') as HTMLInputElement)?.click()}
-              disabled={uploading}
-              className="w-full sm:w-auto"
-            >
+      {/* Header with Actions */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h2 className="text-2xl font-bold">Presentation Management</h2>
+          <p className="text-muted-foreground">
+            Manage conference presentations and schedules
+          </p>
+        </div>
+        
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogTrigger asChild>
+              <Button className="w-full sm:w-auto">
+                <Plus className="h-4 w-4 mr-2" />
+                Add Presentation
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>
+                  {editingPresentation ? 'Edit Presentation' : 'Add New Presentation'}
+                </DialogTitle>
+              </DialogHeader>
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="md:col-span-2">
+                    <Label htmlFor="title">Title *</Label>
+                    <Input
+                      id="title"
+                      value={formData.title}
+                      onChange={(e) => setFormData({...formData, title: e.target.value})}
+                      placeholder="Presentation title"
+                      required
+                    />
+                  </div>
+                  
+                  <div className="md:col-span-2">
+                    <Label htmlFor="authors">Authors *</Label>
+                    <Input
+                      id="authors"
+                      value={formData.authors}
+                      onChange={(e) => setFormData({...formData, authors: e.target.value})}
+                      placeholder="Author names (comma separated)"
+                      required
+                    />
+                  </div>
+                  
+                  <div className="md:col-span-2">
+                    <Label htmlFor="abstract">Abstract</Label>
+                    <Textarea
+                      id="abstract"
+                      value={formData.abstract}
+                      onChange={(e) => setFormData({...formData, abstract: e.target.value})}
+                      placeholder="Presentation abstract"
+                      rows={3}
+                    />
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="room">Room</Label>
+                    <Select value={formData.room} onValueChange={(value) => setFormData({...formData, room: value})}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select room" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ROOMS.map(room => (
+                          <SelectItem key={room} value={room}>{room}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="sessionDate">Session Date</Label>
+                    <Input
+                      id="sessionDate"
+                      type="date"
+                      value={formData.sessionDate}
+                      onChange={(e) => setFormData({...formData, sessionDate: e.target.value})}
+                    />
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="startTime">Start Time</Label>
+                    <Input
+                      id="startTime"
+                      type="time"
+                      value={formData.startTime}
+                      onChange={(e) => setFormData({...formData, startTime: e.target.value})}
+                    />
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="endTime">End Time</Label>
+                    <Input
+                      id="endTime"
+                      type="time"
+                      value={formData.endTime}
+                      onChange={(e) => setFormData({...formData, endTime: e.target.value})}
+                    />
+                  </div>
+                </div>
+                
+                <div className="flex justify-end gap-2">
+                  <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button type="submit">
+                    {editingPresentation ? 'Update' : 'Create'} Presentation
+                  </Button>
+                </div>
+              </form>
+            </DialogContent>
+          </Dialog>
+          
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={handleBulkImport} disabled={uploading} className="flex-1 sm:flex-none">
               {uploading ? (
                 <>
                   <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                  Uploading {uploadProgress}%...
+                  Importing...
                 </>
               ) : (
                 <>
                   <Upload className="h-4 w-4 mr-2" />
-                  Choose CSV File
+                  <span className="hidden sm:inline">Bulk Import</span>
+                  <span className="sm:hidden">Import</span>
+                </>
+              )}
+            </Button>
+            
+            <Button variant="destructive" onClick={handleDeleteAll} disabled={deleting === 'all'} className="flex-1 sm:flex-none">
+              {deleting === 'all' ? (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  <span className="hidden sm:inline">Delete All</span>
+                  <span className="sm:hidden">Clear All</span>
                 </>
               )}
             </Button>
           </div>
+        </div>
+      </div>
 
-          {/* Progress bar when uploading */}
-          {uploading && (
-            <div className="space-y-2">
-              <div className="w-full bg-gray-200 rounded-full h-2">
-                <div 
-                  className="bg-primary h-2 rounded-full transition-all duration-300" 
-                  style={{ width: `${uploadProgress}%` }}
-                ></div>
-              </div>
-              <p className="text-sm text-muted-foreground text-center">
-                Processing presentations... Please wait.
-              </p>
+      {/* Filters */}
+      <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+        <div className="flex items-center gap-2">
+          <Filter className="h-4 w-4" />
+          <span className="text-sm font-medium">Filter by Room:</span>
+        </div>
+        <Select value={filterRoom} onValueChange={setFilterRoom}>
+          <SelectTrigger className="w-full sm:w-48">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Rooms</SelectItem>
+            {ROOMS.map(room => (
+              <SelectItem key={room} value={room}>{room}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* File Upload */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center">
+            <Upload className="h-5 w-5 mr-2" />
+            Upload Presentations from File
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Upload a CSV file with columns: Title|Authors|Abstract|Room|SessionDate|StartTime|EndTime
+            </p>
+            <div className="flex items-center gap-4">
+              <Input
+                type="file"
+                accept=".csv,.txt"
+                onChange={handleFileUpload}
+                disabled={uploading}
+                className="flex-1"
+              />
+              {uploading && (
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                  <span className="text-sm">{Math.round(uploadProgress)}%</span>
+                </div>
+              )}
             </div>
-          )}
+          </div>
         </CardContent>
       </Card>
 
@@ -351,102 +502,86 @@ export function PresentationManagement({ searchTerm = '' }: PresentationManageme
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
-            <span>
+            <div className="flex items-center">
+              <FileText className="h-5 w-5 mr-2" />
               Presentations ({filteredPresentations.length})
-              {searchTerm && ` matching "${searchTerm}"`}
-            </span>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={loadPresentations}
-              disabled={loading}
-            >
-              {loading ? (
-                <>
-                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                  Loading...
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  Refresh
-                </>
-              )}
-            </Button>
+            </div>
+            {loading && (
+              <div className="flex items-center gap-2">
+                <RefreshCw className="h-4 w-4 animate-spin" />
+                <span className="text-sm">Loading...</span>
+              </div>
+            )}
           </CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
-            <div className="flex items-center justify-center py-8">
-              <RefreshCw className="h-6 w-6 animate-spin text-primary" />
-              <span className="ml-2">Loading presentations...</span>
+            <div className="text-center py-8">
+              <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-2" />
+              <p>Loading presentations...</p>
             </div>
           ) : filteredPresentations.length === 0 ? (
             <div className="text-center py-8">
-              <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-muted-foreground">
-                {searchTerm ? `No presentations found matching "${searchTerm}"` : 'No presentations uploaded yet.'}
-              </p>
+              <FileText className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+              <p className="text-muted-foreground">No presentations found</p>
             </div>
           ) : (
             <div className="space-y-4">
               {filteredPresentations.map((presentation) => (
-                <div
-                  key={presentation.id}
-                  className="border rounded-lg p-4 space-y-2"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <h3 className="font-medium">
-                        {/* Highlight search terms */}
-                        {searchTerm ? (
-                          <span dangerouslySetInnerHTML={{
-                            __html: presentation.title.replace(
-                              new RegExp(searchTerm, 'gi'),
-                              (match) => `<mark class="bg-yellow-200">${match}</mark>`
-                            )
-                          }} />
-                        ) : (
-                          presentation.title
-                        )}
-                      </h3>
+                <div key={presentation.id} className="border rounded-lg p-4 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-lg truncate">{presentation.title}</h3>
                       <p className="text-sm text-muted-foreground">
-                        {presentation.authors.join(', ')}
+                        {presentation.authors?.join(', ')}
                       </p>
-                      <div className="flex flex-wrap gap-2 mt-1">
-                        <Badge variant="outline">{presentation.room}</Badge>
-                        <Badge variant="outline">{presentation.sessionDate}</Badge>
-                        <Badge variant="outline">{presentation.startTime} - {presentation.endTime}</Badge>
-                      </div>
+                      {presentation.abstract && (
+                        <p className="text-sm mt-2 line-clamp-2">{presentation.abstract}</p>
+                      )}
                     </div>
-                    <div className="flex space-x-2">
+                    
+                    <div className="flex flex-col sm:flex-row gap-2">
                       <Button
-                        variant="ghost"
                         size="sm"
+                        variant="outline"
                         onClick={() => handleEdit(presentation)}
                       >
                         <Edit className="h-4 w-4 mr-1" />
-                        Edit
+                        <span className="hidden sm:inline">Edit</span>
                       </Button>
                       <Button
-                        variant="destructive"
                         size="sm"
+                        variant="destructive"
                         onClick={() => handleDelete(presentation.id)}
                         disabled={deleting === presentation.id}
                       >
                         {deleting === presentation.id ? (
-                          <>
-                            <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                            Deleting...
-                          </>
+                          <RefreshCw className="h-4 w-4 animate-spin" />
                         ) : (
                           <>
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            Delete
+                            <Trash2 className="h-4 w-4 mr-1" />
+                            <span className="hidden sm:inline">Delete</span>
                           </>
                         )}
                       </Button>
                     </div>
+                  </div>
+                  
+                  <div className="flex flex-wrap gap-2">
+                    {presentation.room && (
+                      <Badge variant="secondary">{presentation.room}</Badge>
+                    )}
+                    {presentation.sessionDate && (
+                      <Badge variant="outline">{presentation.sessionDate}</Badge>
+                    )}
+                    {presentation.startTime && presentation.endTime && (
+                      <Badge variant="outline">
+                        {presentation.startTime} - {presentation.endTime}
+                      </Badge>
+                    )}
+                    <Badge variant="default">
+                      {presentation.totalVotes || 0} votes
+                    </Badge>
                   </div>
                 </div>
               ))}

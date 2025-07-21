@@ -446,10 +446,10 @@ export function Dashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-secondary/20 to-primary/5">
+    <div className="main-container min-h-screen bg-gradient-to-br from-background via-secondary/20 to-primary/5">
       {/* Header */}
-      <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-10">
-        <div className="container mx-auto px-4 py-4">
+      <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-10 w-full">
+        <div className="w-full px-2 sm:px-8 py-4">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-2">
             <div className="flex items-center space-x-4">
               <Trophy className="h-8 w-8 text-primary" />
@@ -497,10 +497,10 @@ export function Dashboard() {
         </div>
       </header>
 
-      <div className="container mx-auto px-2 sm:px-4 py-4 sm:py-6">
+      <div className="w-full px-2 sm:px-8 py-4 sm:py-6 min-w-0">
         {/* Filters & View Controls */}
-        <Card className="mb-4 sm:mb-6">
-          <CardHeader className="p-4 sm:p-6">
+        <Card className="mb-4 sm:mb-6 w-full rounded-none border-0 shadow-none bg-white/90 min-w-0">
+          <CardHeader className="p-0 sm:p-0 px-2 sm:px-8 pt-8 pb-4">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
               <div className="flex items-center">
                 <Filter className="h-5 w-5 mr-2" />
@@ -528,18 +528,18 @@ export function Dashboard() {
               </div>
             </div>
           </CardHeader>
-          <CardContent className="p-4 sm:p-6 pt-0 sm:pt-0">
+          <CardContent className="p-0 sm:p-0 px-2 sm:px-8 pt-0 pb-8">
             <div className="flex flex-col gap-3">
-              <div className="flex-1 relative">
+              <div className="flex-1 relative min-w-0">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   placeholder="Search presentations or authors..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-9"
+                  className="pl-9 w-full min-w-0"
                 />
               </div>
-              <div className="grid grid-cols-2 sm:flex gap-2">
+              <div className="grid grid-cols-2 sm:flex gap-2 min-w-0">
                 <Select value={selectedRoom} onValueChange={setSelectedRoom}>
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Filter by room" />
@@ -587,10 +587,10 @@ export function Dashboard() {
 
         {/* Voting Statistics - Make responsive */}
         {currentUser && (
-          <Card className="mb-4 sm:mb-6 bg-gradient-to-r from-primary/5 to-accent/5">
-            <CardContent className="p-4">
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-2">
-                <div className="flex items-center space-x-4 w-full">
+          <Card className="mb-4 sm:mb-6 bg-gradient-to-r from-primary/5 to-accent/5 w-full rounded-none border-0 shadow-none min-w-0">
+            <CardContent className="p-0 px-2 sm:px-8 py-6">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-2 min-w-0">
+                <div className="flex items-center">
                   <div className="flex items-center">
                     {currentUser.role === 'judge' ? (
                       <Trophy className="h-5 w-5 text-primary mr-2" />
@@ -635,7 +635,7 @@ export function Dashboard() {
               ))}
             </TabsList>
 
-            <TabsContent value="all" className="space-y-4">
+            <TabsContent value="all" className="space-y-4 w-full px-2 sm:px-8 min-w-0">
               {filteredPresentations.length === 0 ? (
                 <Card>
                   <CardContent className="flex items-center justify-center py-12">
@@ -682,7 +682,7 @@ export function Dashboard() {
             </TabsContent>
 
             {visibleRooms.map(room => (
-              <TabsContent key={room} value={room} className="space-y-4">
+              <TabsContent key={room} value={room} className="space-y-4 w-full px-2 sm:px-8 min-w-0">
                 <div className="grid gap-4">
                   {presentationsByRoom[room].map(presentation => (
                     <div key={presentation.id} className="relative">
@@ -713,16 +713,16 @@ export function Dashboard() {
           </Tabs>
         ) : (
           /* Agenda View - Make responsive */
-          <div className="space-y-5 sm:space-y-6">
+          <div className="space-y-5 sm:space-y-6 w-full min-w-0">
             {/* Event Selector - Improve mobile view */}
-            <Card>
-              <CardHeader className="p-4 sm:p-6">
+            <Card className="w-full rounded-none border-0 shadow-none bg-white/90 min-w-0">
+              <CardHeader className="p-0 px-2 sm:px-8 pt-8 pb-4">
                 <CardTitle className="flex items-center text-lg sm:text-xl">
                   <Calendar className="h-5 w-5 mr-2" />
                   Conference Agenda
                 </CardTitle>
               </CardHeader>
-              <CardContent className="p-4 sm:p-6 pt-0 sm:pt-0">
+              <CardContent className="p-0 px-2 sm:px-8 pt-0 pb-8">
                 <div className="grid gap-3 sm:gap-4">
                   {/* Group slots by day and show day label */}
                   {(() => {
@@ -937,7 +937,7 @@ export function Dashboard() {
 
             {/* Quick Navigation when no event is selected */}
             {!selectedTimeSlot && (
-              <Card>
+              <Card className="w-full rounded-none border-0 shadow-none bg-white/90 min-w-0">
                 <CardContent className="py-6 sm:py-8 text-center px-3 sm:px-6">
                   <Calendar className="h-10 w-10 sm:h-12 sm:w-12 text-muted-foreground mx-auto mb-3 sm:mb-4" />
                   <h3 className="text-base sm:text-lg font-medium mb-2">Select a Session to Focus</h3>

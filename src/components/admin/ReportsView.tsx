@@ -8,7 +8,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { Presentation, Vote, ROOMS } from '@/types';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { BarChart3, PieChart as PieChartIcon, Download, Users, Trophy, TrendingUp, RefreshCw } from 'lucide-react';
+import { BarChart3, PieChart as PieChartIcon, Download, Users, Trophy, TrendingUp, RefreshCw, Filter, FileText } from 'lucide-react';
 import { ScoreDisplay, ScoreTableCell } from '@/components/ui/score-display';
 import { processTableData, getJudgeTotal } from '@/lib/scores';
 
@@ -41,6 +41,7 @@ export function ReportsView({ searchTerm = '' }: ReportsViewProps) {
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [filterRoom, setFilterRoom] = useState<string>('all');
 
   useEffect(() => {
     loadReportData();
@@ -103,12 +104,20 @@ export function ReportsView({ searchTerm = '' }: ReportsViewProps) {
           judgeTotal,
           spectatorLikes,
           finalScore,
-          rank: 0
+          rank: 0 // Will be set after sorting
         };
-      }).sort((a, b) => b.finalScore - a.finalScore)
-        .map((entry, index) => ({ ...entry, rank: index + 1 }));
+      })
+      .filter(item => item.judgeTotal > 0) // Only include presentations with judge scores
+      .sort((a, b) => b.finalScore - a.finalScore) // Sort by final score descending
+      .map((item, index) => ({
+        ...item,
+        rank: index + 1
+      }));
 
       // Calculate analytics
+      const judges = users.filter(user => user.role === 'judge');
+      const spectators = users.filter(user => user.role === 'spectator');
+
       const roomDistribution = ROOMS.map(room => ({
         room,
         count: presentations.filter(p => p.room === room).length
@@ -120,18 +129,26 @@ export function ReportsView({ searchTerm = '' }: ReportsViewProps) {
           roomPresentations.some(p => p.id === v.presentationId)
         );
         
+        const judgeVotes = roomVotes.filter(v => 
+          judges.some(j => j.id === v.userId)
+        ).length;
+        
+        const spectatorVotes = roomVotes.filter(v => 
+          spectators.some(s => s.id === v.userId)
+        ).length;
+
         return {
           room,
-          judgeVotes: roomVotes.filter(v => v.role === 'judge').length,
-          spectatorVotes: roomVotes.filter(v => v.role === 'spectator').length
+          judgeVotes,
+          spectatorVotes
         };
       });
 
       const analytics = {
         totalPresentations: presentations.length,
         totalVotes: votes.length,
-        totalJudges: users.filter(u => u.role === 'judge').length,
-        totalSpectators: users.filter(u => u.role === 'spectator').length,
+        totalJudges: judges.length,
+        totalSpectators: spectators.length,
         roomDistribution,
         votingActivity
       };
@@ -155,12 +172,16 @@ export function ReportsView({ searchTerm = '' }: ReportsViewProps) {
     const headers = Object.keys(data[0]);
     const csvContent = [
       headers.join(','),
-      ...data.map(row => headers.map(header => {
-        const value = row[header];
-        return typeof value === 'string' && value.includes(',') ? `"${value}"` : value;
-      }).join(','))
+      ...data.map(row => 
+        headers.map(header => {
+          const value = row[header];
+          return typeof value === 'string' && value.includes(',') 
+            ? `"${value}"` 
+            : value;
+        }).join(',')
+      )
     ].join('\n');
-    
+
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -170,195 +191,283 @@ export function ReportsView({ searchTerm = '' }: ReportsViewProps) {
     window.URL.revokeObjectURL(url);
   };
 
-  const COLORS = ['#8884d8', '#82ca9d', '#ffc658', '#ff7300', '#8dd1e1'];
-
-  // Filter presentations based on search term
-  const filteredPresentations = reportData?.presentations.filter(presentation => {
-    if (!searchTerm) return true;
-    
-    const searchLower = searchTerm.toLowerCase();
-    return (
-      presentation.title.toLowerCase().includes(searchLower) ||
-      presentation.authors.some(author => author.toLowerCase().includes(searchLower)) ||
-      presentation.room.toLowerCase().includes(searchLower)
-    );
-  }) || [];
-
   const handleGenerateReport = async () => {
     setGenerating(true);
     try {
-      // Simulate report generation logic
-      await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate processing
-      // TODO: Implement actual report generation logic
-    } catch (error) {
-      console.error('Error generating report:', error);
+      await loadReportData();
     } finally {
       setGenerating(false);
     }
   };
 
   const handleExportData = async () => {
+    if (!reportData) return;
+    
     setExporting(true);
     try {
-      // Simulate data export logic
-      await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate processing
-      // TODO: Implement actual data export logic
-    } catch (error) {
-      console.error('Error exporting data:', error);
+      // Export leaderboard
+      const leaderboardData = reportData.leaderboard.map(item => ({
+        Rank: item.rank,
+        Title: item.presentation.title,
+        Authors: item.presentation.authors?.join(', ') || '',
+        Room: item.presentation.room || '',
+        JudgeTotal: item.judgeTotal,
+        SpectatorLikes: item.spectatorLikes,
+        FinalScore: item.finalScore
+      }));
+      
+      exportToCSV(leaderboardData, 'presentation-leaderboard.csv');
     } finally {
       setExporting(false);
     }
   };
 
+  // Filter leaderboard based on search term and room filter
+  const filteredLeaderboard = reportData?.leaderboard.filter(item => {
+    const matchesSearch = !searchTerm || 
+      item.presentation.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.presentation.authors?.some(author => 
+        author.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    
+    const matchesRoom = filterRoom === 'all' || item.presentation.room === filterRoom;
+    
+    return matchesSearch && matchesRoom;
+  }) || [];
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <BarChart3 className="h-6 w-6 animate-pulse text-primary" />
-        <span className="ml-2">Loading reports...</span>
+      <div className="text-center py-8">
+        <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-2" />
+        <p>Loading report data...</p>
       </div>
     );
   }
 
   if (!reportData) {
-    return <div>No data available</div>;
+    return (
+      <div className="text-center py-8">
+        <BarChart3 className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+        <p className="text-muted-foreground">No report data available</p>
+      </div>
+    );
   }
 
   return (
     <div className="space-y-6">
-      {/* Search Results Info */}
-      {searchTerm && (
-        <Card className="bg-blue-50 border-blue-200">
+      {/* Header with Actions */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h2 className="text-2xl font-bold">Reports & Analytics</h2>
+          <p className="text-muted-foreground">
+            View detailed analytics and voting statistics
+          </p>
+        </div>
+        
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+          <Button 
+            onClick={handleGenerateReport} 
+            disabled={generating}
+            variant="outline"
+            className="w-full sm:w-auto"
+          >
+            {generating ? (
+              <>
+                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                Generating...
+              </>
+            ) : (
+              <>
+                <BarChart3 className="h-4 w-4 mr-2" />
+                <span className="hidden sm:inline">Generate Report</span>
+                <span className="sm:hidden">Generate</span>
+              </>
+            )}
+          </Button>
+          
+          <Button 
+            onClick={handleExportData} 
+            disabled={exporting || !reportData}
+            variant="outline"
+            className="w-full sm:w-auto"
+          >
+            {exporting ? (
+              <>
+                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                Exporting...
+              </>
+            ) : (
+              <>
+                <Download className="h-4 w-4 mr-2" />
+                <span className="hidden sm:inline">Export Data</span>
+                <span className="sm:hidden">Export</span>
+              </>
+            )}
+          </Button>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+        <div className="flex items-center gap-2">
+          <Filter className="h-4 w-4" />
+          <span className="text-sm font-medium">Filter by Room:</span>
+        </div>
+        <select
+          value={filterRoom}
+          onChange={(e) => setFilterRoom(e.target.value)}
+          className="border rounded px-3 py-2 w-full sm:w-48"
+        >
+          <option value="all">All Rooms</option>
+          {ROOMS.map(room => (
+            <option key={room} value={room}>{room}</option>
+          ))}
+        </select>
+      </div>
+
+      {/* Analytics Overview */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <Card>
           <CardContent className="p-4">
-            <p className="text-sm text-blue-800">
-              Reports filtered for {filteredPresentations.length} presentations matching "{searchTerm}"
-            </p>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Quick Actions with Progress */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Report Actions</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            <Button 
-              onClick={handleGenerateReport}
-              disabled={generating}
-              className="w-full"
-            >
-              {generating ? (
-                <>
-                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                  Generating Report...
-                </>
-              ) : (
-                <>
-                  <BarChart3 className="h-4 w-4 mr-2" />
-                  Generate Full Report
-                </>
-              )}
-            </Button>
-            
-            <Button 
-              variant="outline"
-              onClick={handleExportData}
-              disabled={exporting}
-              className="w-full"
-            >
-              {exporting ? (
-                <>
-                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                  Exporting Data...
-                </>
-              ) : (
-                <>
-                  <Download className="h-4 w-4 mr-2" />
-                  Export CSV
-                </>
-              )}
-            </Button>
-          </div>
-
-          {/* Progress indicators */}
-          {(generating || exporting) && (
-            <Card className="bg-blue-50 border-blue-200">
-              <CardContent className="p-4">
-                <div className="flex items-center space-x-2">
-                  <RefreshCw className="h-4 w-4 animate-spin text-blue-600" />
-                  <span className="text-sm text-blue-800">
-                    {generating ? 'Generating comprehensive report...' : 'Preparing data export...'}
-                  </span>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Overview Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <FileText className="h-4 w-4 text-blue-600" />
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Total Presentations</p>
                 <p className="text-2xl font-bold">{reportData.analytics.totalPresentations}</p>
+                <p className="text-xs text-muted-foreground">Presentations</p>
               </div>
-              <Trophy className="h-8 w-8 text-muted-foreground" />
             </div>
           </CardContent>
         </Card>
+        
         <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
+          <CardContent className="p-4">
+            <div className="flex items-center space-x-2">
+              <Users className="h-4 w-4 text-green-600" />
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Total Votes</p>
                 <p className="text-2xl font-bold">{reportData.analytics.totalVotes}</p>
+                <p className="text-xs text-muted-foreground">Total Votes</p>
               </div>
-              <BarChart3 className="h-8 w-8 text-muted-foreground" />
             </div>
           </CardContent>
         </Card>
+        
         <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
+          <CardContent className="p-4">
+            <div className="flex items-center space-x-2">
+              <Trophy className="h-4 w-4 text-yellow-600" />
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Judges</p>
                 <p className="text-2xl font-bold">{reportData.analytics.totalJudges}</p>
+                <p className="text-xs text-muted-foreground">Judges</p>
               </div>
-              <Users className="h-8 w-8 text-muted-foreground" />
             </div>
           </CardContent>
         </Card>
+        
         <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
+          <CardContent className="p-4">
+            <div className="flex items-center space-x-2">
+              <TrendingUp className="h-4 w-4 text-purple-600" />
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Spectators</p>
                 <p className="text-2xl font-bold">{reportData.analytics.totalSpectators}</p>
+                <p className="text-xs text-muted-foreground">Spectators</p>
               </div>
-              <Users className="h-8 w-8 text-muted-foreground" />
             </div>
           </CardContent>
         </Card>
       </div>
 
-      <Tabs defaultValue="charts" className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="charts">Charts & Analytics</TabsTrigger>
-          <TabsTrigger value="leaderboard">Detailed Leaderboard</TabsTrigger>
+      <Tabs defaultValue="leaderboard" className="w-full">
+        <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4">
+          <TabsTrigger value="leaderboard" className="flex items-center text-xs">
+            <Trophy className="h-4 w-4 mr-1" />
+            <span className="hidden sm:inline">Leaderboard</span>
+            <span className="sm:hidden">Rankings</span>
+          </TabsTrigger>
+          <TabsTrigger value="analytics" className="flex items-center text-xs">
+            <BarChart3 className="h-4 w-4 mr-1" />
+            <span className="hidden sm:inline">Analytics</span>
+            <span className="sm:hidden">Analytics</span>
+          </TabsTrigger>
+          <TabsTrigger value="room-distribution" className="flex items-center text-xs">
+            <PieChartIcon className="h-4 w-4 mr-1" />
+            <span className="hidden sm:inline">Room Distribution</span>
+            <span className="sm:hidden">Rooms</span>
+          </TabsTrigger>
+          <TabsTrigger value="voting-activity" className="flex items-center text-xs">
+            <Users className="h-4 w-4 mr-1" />
+            <span className="hidden sm:inline">Voting Activity</span>
+            <span className="sm:hidden">Activity</span>
+          </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="charts" className="space-y-6">
+        <TabsContent value="leaderboard" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between">
+                <div className="flex items-center">
+                  <Trophy className="h-5 w-5 mr-2" />
+                  Leaderboard ({filteredLeaderboard.length})
+                </div>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {filteredLeaderboard.length === 0 ? (
+                <div className="text-center py-8">
+                  <Trophy className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                  <p className="text-muted-foreground">No presentations found</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {filteredLeaderboard.map((item) => (
+                    <div key={item.presentation.id} className="border rounded-lg p-4 space-y-3">
+                      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Badge variant="default" className="text-xs">
+                              #{item.rank}
+                            </Badge>
+                            <Badge variant="secondary" className="text-xs">
+                              Score: {item.finalScore}
+                            </Badge>
+                          </div>
+                          <h3 className="font-semibold text-lg truncate">{item.presentation.title}</h3>
+                          <p className="text-sm text-muted-foreground">
+                            {item.presentation.authors?.join(', ')}
+                          </p>
+                          {item.presentation.room && (
+                            <Badge variant="outline" className="mt-2">
+                              {item.presentation.room}
+                            </Badge>
+                          )}
+                        </div>
+                        
+                        <div className="flex flex-col gap-2">
+                          <div className="text-right">
+                            <p className="text-sm font-medium">Judge Total</p>
+                            <p className="text-lg font-bold text-primary">{item.judgeTotal}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-sm font-medium">Spectator Likes</p>
+                            <p className="text-lg font-bold text-green-600">{item.spectatorLikes}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="analytics" className="space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Room Distribution */}
+            {/* Room Distribution Chart */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center">
                   <PieChartIcon className="h-5 w-5 mr-2" />
-                  Presentations by Room
+                  Room Distribution
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -369,13 +478,13 @@ export function ReportsView({ searchTerm = '' }: ReportsViewProps) {
                       cx="50%"
                       cy="50%"
                       labelLine={false}
-                      label={({ room, count }) => `${room}: ${count}`}
+                      label={({ room, percent }) => `${room} ${(percent * 100).toFixed(0)}%`}
                       outerRadius={80}
                       fill="#8884d8"
                       dataKey="count"
                     >
                       {reportData.analytics.roomDistribution.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        <Cell key={`cell-${index}`} fill={`hsl(${index * 60}, 70%, 50%)`} />
                       ))}
                     </Pie>
                     <Tooltip />
@@ -384,7 +493,7 @@ export function ReportsView({ searchTerm = '' }: ReportsViewProps) {
               </CardContent>
             </Card>
 
-            {/* Voting Activity by Room */}
+            {/* Voting Activity Chart */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center">
@@ -405,161 +514,72 @@ export function ReportsView({ searchTerm = '' }: ReportsViewProps) {
                 </ResponsiveContainer>
               </CardContent>
             </Card>
-
-            {/* Top Presentations */}
-            <Card className="lg:col-span-2">
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <TrendingUp className="h-5 w-5 mr-2" />
-                  Top 10 Presentations by Final Score
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={400}>
-                  <BarChart data={reportData.leaderboard.slice(0, 10)}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis 
-                      dataKey="presentation.title" 
-                      angle={-45}
-                      textAnchor="end"
-                      height={100}
-                      interval={0}
-                      fontSize={10}
-                    />
-                    <YAxis />
-                    <Tooltip 
-                      formatter={(value, name) => [Number(value).toFixed(2), name]}
-                      labelFormatter={(label) => `Presentation: ${label}`}
-                    />
-                    <Bar dataKey="finalScore" fill="#8884d8" name="Final Score" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
           </div>
         </TabsContent>
 
-        <TabsContent value="leaderboard" className="space-y-6">
+        <TabsContent value="room-distribution" className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Complete Leaderboard</CardTitle>
+              <CardTitle className="flex items-center">
+                <PieChartIcon className="h-5 w-5 mr-2" />
+                Room Distribution Details
+              </CardTitle>
             </CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-16">Rank</TableHead>
-                    <TableHead>Title</TableHead>
-                    <TableHead>Authors</TableHead>
-                    <TableHead>Room</TableHead>
-                    <TableHead className="text-right">Judge Total</TableHead> {/* Changed from Judge Avg */}
-                    <TableHead className="text-right">Spectator Likes</TableHead>
-                    <TableHead className="text-right">Final Score</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {reportData.leaderboard.map((entry) => (
-                    <TableRow key={entry.presentation.id}>
-                      <TableCell className="font-medium">
-                        <Badge variant={
-                          entry.rank === 1 ? "default" :
-                          entry.rank === 2 ? "secondary" :
-                          entry.rank === 3 ? "outline" : "outline"
-                        }>
-                          #{entry.rank}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="font-medium max-w-xs">
-                        <div className="truncate" title={entry.presentation.title}>
-                          {entry.presentation.title}
-                        </div>
-                      </TableCell>
-                      <TableCell className="max-w-xs">
-                        <div className="truncate" title={entry.presentation.authors.join(', ')}>
-                          {entry.presentation.authors.join(', ')}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{entry.presentation.room}</Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <ScoreDisplay value={entry.judgeTotal} />
-                      </TableCell>
-                      <TableCell className="text-right">{entry.spectatorLikes}</TableCell>
-                      <TableCell className="text-right font-bold">
-                        <ScoreDisplay value={entry.finalScore} />
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+              <div className="space-y-4">
+                {reportData.analytics.roomDistribution.map((item) => (
+                  <div key={item.room} className="flex items-center justify-between p-3 border rounded">
+                    <div>
+                      <p className="font-medium">{item.room}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {item.count} presentation{item.count !== 1 ? 's' : ''}
+                      </p>
+                    </div>
+                    <Badge variant="secondary">
+                      {((item.count / reportData.analytics.totalPresentations) * 100).toFixed(1)}%
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="voting-activity" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <Users className="h-5 w-5 mr-2" />
+                Voting Activity Details
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {reportData.analytics.votingActivity.map((item) => (
+                  <div key={item.room} className="border rounded p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-medium">{item.room}</h3>
+                      <Badge variant="secondary">
+                        {item.judgeVotes + item.spectatorVotes} total votes
+                      </Badge>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="text-center">
+                        <p className="text-2xl font-bold text-blue-600">{item.judgeVotes}</p>
+                        <p className="text-sm text-muted-foreground">Judge Votes</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-2xl font-bold text-green-600">{item.spectatorVotes}</p>
+                        <p className="text-sm text-muted-foreground">Spectator Votes</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
-
-      {/* Presentation Scores - Filtered */}
-      <Card>
-        <CardHeader>
-          <CardTitle>
-            Presentation Scores
-            {searchTerm && ` (filtered: ${filteredPresentations.length})`}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-16">Rank</TableHead>
-                <TableHead>Title</TableHead>
-                <TableHead>Authors</TableHead>
-                <TableHead>Room</TableHead>
-                <TableHead className="text-right">Judge Total</TableHead> {/* Changed from Judge Avg */}
-                <TableHead className="text-right">Spectator Likes</TableHead>
-                <TableHead className="text-right">Final Score</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredPresentations.map((presentation, index) => {
-                const entry = reportData.leaderboard.find(e => e.presentation.id === presentation.id);
-                return (
-                  <TableRow key={presentation.id}>
-                    <TableCell className="font-medium">
-                      <Badge variant={
-                        entry?.rank === 1 ? "default" :
-                        entry?.rank === 2 ? "secondary" :
-                        entry?.rank === 3 ? "outline" : "outline"
-                      }>
-                        #{entry?.rank}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="font-medium max-w-xs">
-                      <div className="truncate" title={presentation.title}>
-                        {presentation.title}
-                      </div>
-                    </TableCell>
-                    <TableCell className="max-w-xs">
-                      <div className="truncate" title={presentation.authors.join(', ')}>
-                        {presentation.authors.join(', ')}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{presentation.room}</Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <ScoreDisplay value={entry?.judgeTotal} />
-                    </TableCell>
-                    <TableCell className="text-right">{entry?.spectatorLikes}</TableCell>
-                    <TableCell className="text-right font-bold">
-                      <ScoreDisplay value={entry?.finalScore} />
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
     </div>
   );
 }

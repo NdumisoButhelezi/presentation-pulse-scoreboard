@@ -9,6 +9,7 @@ import Index from "./pages/Index";
 import { Dashboard } from "./pages/Dashboard";
 import { AdminDashboard } from "./pages/AdminDashboard";
 import { HallOfFame } from "./pages/HallOfFame";
+import { LandingPage } from "./pages/LandingPage";
 import NotFound from "./pages/NotFound";
 import MyReserved from './pages/MyReserved';
 import "./App.css";
@@ -25,6 +26,7 @@ const App = () => (
           <BrowserRouter>
             <Routes>
               <Route path="/" element={<Index />} />
+              <Route path="/landing" element={<LandingPage />} />
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/admin" element={<AdminDashboard />} />
               <Route path="/hall-of-fame" element={<HallOfFame />} />

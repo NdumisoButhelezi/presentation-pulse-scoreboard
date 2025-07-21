@@ -9,7 +9,11 @@ import { PresentationManagement } from '@/components/admin/PresentationManagemen
 import { ReportsView } from '@/components/admin/ReportsView';
 import { cleanupDuplicateVotes, recalculateAllPresentationStats, fixNanScores, db } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
-import { Shield, BarChart3, FileText, LogOut, Database, RefreshCw, Search, CalendarClock, AlertTriangle } from 'lucide-react';
+import { 
+  Shield, BarChart3, FileText, LogOut, Database, RefreshCw, Search, 
+  CalendarClock, AlertTriangle, Menu, X, Settings, Users, TrendingUp,
+  Activity, BarChart, PieChart, Download, Upload, Trash2, Plus
+} from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { bulkImportConferencePresentations } from '../lib/importPresentations';
 import { collection, getDocs, doc, updateDoc } from 'firebase/firestore';
@@ -25,6 +29,8 @@ export function AdminDashboard() {
   const [loggingOut, setLoggingOut] = useState(false);
   const [recalculating, setRecalculating] = useState(false);
   const [fixingScores, setFixingScores] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [activeSection, setActiveSection] = useState('overview');
 
   // --- Judge Assignment State ---
   const [judges, setJudges] = useState<any[]>([]);
@@ -185,191 +191,222 @@ export function AdminDashboard() {
     return <AdminLogin />;
   }
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-secondary/20 to-primary/5">
-      {/* Header */}
-      <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-10">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <Shield className="h-8 w-8 text-primary" />
-              <div>
-                <h1 className="text-2xl font-bold">Admin Dashboard</h1>
-                <p className="text-sm text-muted-foreground">ICTAS 2025 Management Portal</p>
-              </div>
+  const navigationItems = [
+    { id: 'overview', label: 'Overview', icon: BarChart3 },
+    { id: 'presentations', label: 'Presentations', icon: FileText },
+    { id: 'reports', label: 'Reports', icon: BarChart },
+    { id: 'data-integrity', label: 'Data Integrity', icon: Database },
+    { id: 'judge-assignment', label: 'Judge Assignment', icon: Users },
+  ];
+
+  const renderContent = () => {
+    switch (activeSection) {
+      case 'overview':
+        return (
+          <div className="space-y-6">
+            {/* Statistics Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-blue-600 mb-1">Total Presentations</p>
+                      <p className="text-3xl font-bold text-blue-900">79</p>
+                      <p className="text-xs text-blue-600 mt-1">Active sessions</p>
+                    </div>
+                    <div className="h-12 w-12 bg-blue-500 rounded-lg flex items-center justify-center">
+                      <FileText className="h-6 w-6 text-white" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-green-600 mb-1">Total Votes</p>
+                      <p className="text-3xl font-bold text-green-900">6</p>
+                      <p className="text-xs text-green-600 mt-1">Cast today</p>
+                    </div>
+                    <div className="h-12 w-12 bg-green-500 rounded-lg flex items-center justify-center">
+                      <Activity className="h-6 w-6 text-white" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-purple-600 mb-1">Judges</p>
+                      <p className="text-3xl font-bold text-purple-900">8</p>
+                      <p className="text-xs text-purple-600 mt-1">Registered</p>
+                    </div>
+                    <div className="h-12 w-12 bg-purple-500 rounded-lg flex items-center justify-center">
+                      <Users className="h-6 w-6 text-white" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-orange-600 mb-1">Spectators</p>
+                      <p className="text-3xl font-bold text-orange-900">4</p>
+                      <p className="text-xs text-orange-600 mt-1">Active</p>
+                    </div>
+                    <div className="h-12 w-12 bg-orange-500 rounded-lg flex items-center justify-center">
+                      <TrendingUp className="h-6 w-6 text-white" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
             </div>
-            <div className="flex items-center space-x-4">
-              {/* Global Search */}
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search presentations, authors, or reports..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-9 w-80"
-                />
-              </div>
-              <div className="text-right">
-                <p className="font-medium">{currentUser.name}</p>
-                <p className="text-sm text-muted-foreground flex items-center">
-                  <Shield className="h-4 w-4 mr-1" />
-                  Administrator
-                </p>
-              </div>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={handleLogout}
-                disabled={loggingOut}
-              >
-                {loggingOut ? (
-                  <>
-                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                    Logging out...
-                  </>
-                ) : (
-                  <>
-                    <LogOut className="h-4 w-4 mr-2" />
-                    Logout
-                  </>
-                )}
-              </Button>
-            </div>
+
+            {/* Quick Actions */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <Settings className="h-5 w-5 mr-2" />
+                  Quick Actions
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <Button 
+                    variant="outline" 
+                    onClick={handleBulkImport}
+                    disabled={importing}
+                    className="h-auto py-4 flex flex-col items-center gap-2"
+                  >
+                    {importing ? (
+                      <RefreshCw className="h-5 w-5 animate-spin" />
+                    ) : (
+                      <Upload className="h-5 w-5" />
+                    )}
+                    <span className="text-sm font-medium">
+                      {importing ? 'Importing...' : 'Import Presentations'}
+                    </span>
+                  </Button>
+                  
+                  <Button 
+                    variant="outline" 
+                    onClick={handleCleanupDuplicateVotes}
+                    disabled={cleaningVotes}
+                    className="h-auto py-4 flex flex-col items-center gap-2"
+                  >
+                    {cleaningVotes ? (
+                      <RefreshCw className="h-5 w-5 animate-spin" />
+                    ) : (
+                      <Database className="h-5 w-5" />
+                    )}
+                    <span className="text-sm font-medium">
+                      {cleaningVotes ? 'Cleaning...' : 'Clean Duplicates'}
+                    </span>
+                  </Button>
+
+                  <Button 
+                    variant="outline" 
+                    onClick={handleRecalculateStats}
+                    disabled={recalculating}
+                    className="h-auto py-4 flex flex-col items-center gap-2"
+                  >
+                    {recalculating ? (
+                      <RefreshCw className="h-5 w-5 animate-spin" />
+                    ) : (
+                      <BarChart3 className="h-5 w-5" />
+                    )}
+                    <span className="text-sm font-medium">
+                      {recalculating ? 'Recalculating...' : 'Recalculate Scores'}
+                    </span>
+                  </Button>
+
+                  <Button 
+                    variant="outline" 
+                    onClick={handleFixNanScores}
+                    disabled={fixingScores}
+                    className="h-auto py-4 flex flex-col items-center gap-2"
+                  >
+                    {fixingScores ? (
+                      <RefreshCw className="h-5 w-5 animate-spin" />
+                    ) : (
+                      <AlertTriangle className="h-5 w-5" />
+                    )}
+                    <span className="text-sm font-medium">
+                      {fixingScores ? 'Fixing...' : 'Fix NaN Scores'}
+                    </span>
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Recent Activity */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <Activity className="h-5 w-5 mr-2" />
+                  Recent Activity
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <div className="h-8 w-8 bg-blue-500 rounded-full flex items-center justify-center">
+                        <FileText className="h-4 w-4 text-white" />
+                      </div>
+                      <div>
+                        <p className="font-medium">New presentation added</p>
+                        <p className="text-sm text-muted-foreground">"Advanced AI Applications" by Dr. Smith</p>
+                      </div>
+                    </div>
+                    <span className="text-sm text-muted-foreground">2 minutes ago</span>
+                  </div>
+                  
+                  <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <div className="h-8 w-8 bg-green-500 rounded-full flex items-center justify-center">
+                        <Users className="h-4 w-4 text-white" />
+                      </div>
+                      <div>
+                        <p className="font-medium">Judge vote recorded</p>
+                        <p className="text-sm text-muted-foreground">Judge Johnson voted on "Machine Learning Trends"</p>
+                      </div>
+                    </div>
+                    <span className="text-sm text-muted-foreground">5 minutes ago</span>
+                  </div>
+                  
+                  <div className="flex items-center justify-between p-3 bg-purple-50 rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <div className="h-8 w-8 bg-purple-500 rounded-full flex items-center justify-center">
+                        <BarChart3 className="h-4 w-4 text-white" />
+                      </div>
+                      <div>
+                        <p className="font-medium">Scores recalculated</p>
+                        <p className="text-sm text-muted-foreground">Updated rankings for all presentations</p>
+                      </div>
+                    </div>
+                    <span className="text-sm text-muted-foreground">10 minutes ago</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </div>
-        </div>
-      </header>
+        );
 
-      <div className="container mx-auto px-4 py-6">
-        {/* Search Results Summary */}
-        {searchTerm && (
-          <Card className="mb-6 bg-blue-50 border-blue-200">
-            <CardContent className="p-4">
-              <div className="flex items-center space-x-2">
-                <Search className="h-4 w-4 text-blue-600" />
-                <span className="text-sm text-blue-800">
-                  Searching for: <strong>"{searchTerm}"</strong>
-                </span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setSearchTerm('')}
-                  className="text-blue-600 hover:text-blue-800"
-                >
-                  Clear
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+      case 'presentations':
+        return <PresentationManagement searchTerm={searchTerm} />;
 
-        {/* Quick Actions Bar - Update with new recalculate button */}
-        <div className="mb-6 flex flex-wrap gap-3">
-          <Button 
-            variant="outline" 
-            onClick={handleBulkImport}
-            disabled={importing}
-            className="flex items-center gap-2"
-          >
-            {importing ? (
-              <>
-                <RefreshCw className="h-4 w-4 animate-spin" />
-                Importing...
-              </>
-            ) : (
-              <>
-                <CalendarClock className="h-4 w-4" />
-                Import Conference Presentations
-              </>
-            )}
-          </Button>
-          
-          <Button 
-            variant="outline" 
-            onClick={handleCleanupDuplicateVotes}
-            disabled={cleaningVotes}
-            className="flex items-center gap-2"
-          >
-            {cleaningVotes ? (
-              <>
-                <RefreshCw className="h-4 w-4 animate-spin" />
-                Cleaning...
-              </>
-            ) : (
-              <>
-                <Database className="h-4 w-4" />
-                Clean Duplicate Votes
-              </>
-            )}
-          </Button>
+      case 'reports':
+        return <ReportsView searchTerm={searchTerm} />;
 
-          <Button 
-            variant="outline" 
-            onClick={handleRecalculateStats}
-            disabled={recalculating}
-            className="flex items-center gap-2"
-          >
-            {recalculating ? (
-              <>
-                <RefreshCw className="h-4 w-4 animate-spin" />
-                Recalculating...
-              </>
-            ) : (
-              <>
-                <BarChart3 className="h-4 w-4" />
-                Recalculate Scores
-              </>
-            )}
-          </Button>
-
-          <Button 
-            variant="outline" 
-            onClick={handleFixNanScores}
-            disabled={fixingScores}
-            className="flex items-center gap-2"
-          >
-            {fixingScores ? (
-              <>
-                <RefreshCw className="h-4 w-4 animate-spin" />
-                Fixing NaN Scores...
-              </>
-            ) : (
-              <>
-                <AlertTriangle className="h-4 w-4" />
-                Fix NaN Scores
-              </>
-            )}
-          </Button>
-        </div>
-
-        <Tabs defaultValue="presentations" className="w-full">
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="presentations" className="flex items-center">
-              <FileText className="h-4 w-4 mr-2" />
-              Presentations
-            </TabsTrigger>
-            <TabsTrigger value="reports" className="flex items-center">
-              <BarChart3 className="h-4 w-4 mr-2" />
-              Reports & Analytics
-            </TabsTrigger>
-            <TabsTrigger value="data-integrity" className="flex items-center">
-              <Database className="h-4 w-4 mr-2" />
-              Data Integrity
-            </TabsTrigger>
-            <TabsTrigger value="judge-assignment" className="flex items-center">
-              <Shield className="h-4 w-4 mr-2" />
-              Judge Assignment
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="presentations" className="space-y-6">
-            <PresentationManagement searchTerm={searchTerm} />
-          </TabsContent>
-
-          <TabsContent value="reports" className="space-y-6">
-            <ReportsView searchTerm={searchTerm} />
-          </TabsContent>
-
-          <TabsContent value="data-integrity" className="space-y-6">
+      case 'data-integrity':
+        return (
+          <div className="space-y-6">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center">
@@ -404,7 +441,6 @@ export function AdminDashboard() {
                     </Button>
                   </div>
 
-                  {/* Progress indicator when cleaning */}
                   {cleaningVotes && (
                     <Card className="bg-yellow-50 border-yellow-200">
                       <CardContent className="p-4">
@@ -434,7 +470,6 @@ export function AdminDashboard() {
                   </div>
                 </div>
 
-                {/* Additional Data Integrity Tools */}
                 <div className="border-t pt-6">
                   <h3 className="font-medium mb-4">Additional Data Tools</h3>
                   <div className="grid gap-4 md:grid-cols-2">
@@ -471,13 +506,16 @@ export function AdminDashboard() {
                 </div>
               </CardContent>
             </Card>
-          </TabsContent>
+          </div>
+        );
 
-          <TabsContent value="judge-assignment" className="space-y-6">
+      case 'judge-assignment':
+        return (
+          <div className="space-y-6">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center">
-                  <Shield className="h-5 w-5 mr-2" />
+                  <Users className="h-5 w-5 mr-2" />
                   Assign Judges to Rooms
                 </CardTitle>
               </CardHeader>
@@ -501,9 +539,9 @@ export function AdminDashboard() {
                   {selectedJudgeId && (
                     <div>
                       <label className="block font-medium mb-1">Assign Rooms:</label>
-                      <div className="flex flex-wrap gap-2">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                         {ROOMS.map(room => (
-                          <label key={room} className="flex items-center space-x-2">
+                          <label key={room} className="flex items-center space-x-2 p-2 border rounded hover:bg-muted/50">
                             <input
                               type="checkbox"
                               checked={selectedJudgeRooms.includes(room)}
@@ -515,12 +553,12 @@ export function AdminDashboard() {
                                 }
                               }}
                             />
-                            <span>{room}</span>
+                            <span className="text-sm">{room}</span>
                           </label>
                         ))}
                       </div>
                       <Button
-                        className="mt-4"
+                        className="mt-4 w-full sm:w-auto"
                         onClick={handleSaveAssignment}
                         disabled={savingAssignment}
                       >
@@ -531,9 +569,119 @@ export function AdminDashboard() {
                 </div>
               </CardContent>
             </Card>
-          </TabsContent>
-        </Tabs>
+          </div>
+        );
+
+      default:
+        return <div>Select a section from the sidebar</div>;
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Top Header */}
+      <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
+        <div className="px-4 py-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="lg:hidden"
+                onClick={() => setSidebarOpen(!sidebarOpen)}
+              >
+                {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+              </Button>
+              
+              <div className="flex items-center gap-3">
+                <div className="h-8 w-8 bg-primary rounded-lg flex items-center justify-center">
+                  <Shield className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <h1 className="text-lg font-semibold">Admin Dashboard</h1>
+                  <p className="text-xs text-muted-foreground">ICTAS 2025 Management Portal</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-4">
+              {/* Search Bar */}
+              <div className="relative hidden md:block">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search presentations, reports..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-9 w-80"
+                />
+              </div>
+
+              {/* User Profile */}
+              <div className="flex items-center gap-3">
+                <div className="text-right hidden sm:block">
+                  <p className="text-sm font-medium">{currentUser.name}</p>
+                  <p className="text-xs text-muted-foreground">Administrator</p>
+                </div>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={handleLogout}
+                  disabled={loggingOut}
+                >
+                  {loggingOut ? (
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <LogOut className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <div className="flex">
+        {/* Sidebar */}
+        <aside className={`fixed inset-y-0 left-0 z-20 w-64 bg-white border-r border-gray-200 transform transition-transform duration-200 ease-in-out lg:translate-x-0 lg:static lg:inset-0 ${
+          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}>
+          <div className="flex flex-col h-full">
+            <div className="flex-1 px-4 py-6">
+              <nav className="space-y-2">
+                {navigationItems.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => setActiveSection(item.id)}
+                      className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                        activeSection === item.id
+                          ? 'bg-primary text-primary-foreground'
+                          : 'text-gray-600 hover:bg-gray-100'
+                      }`}
+                    >
+                      <Icon className="h-4 w-4" />
+                      {item.label}
+                    </button>
+                  );
+                })}
+              </nav>
+            </div>
+          </div>
+        </aside>
+
+        {/* Main Content */}
+        <main className="flex-1 lg:ml-0">
+          <div className="p-6">
+            {renderContent()}
+          </div>
+        </main>
       </div>
+
+      {/* Mobile Search Overlay */}
+      {sidebarOpen && (
+        <div className="fixed inset-0 z-10 bg-black bg-opacity-50 lg:hidden" onClick={() => setSidebarOpen(false)} />
+      )}
     </div>
   );
 }
