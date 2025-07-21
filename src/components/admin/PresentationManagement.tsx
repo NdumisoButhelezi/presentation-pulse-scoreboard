@@ -580,7 +580,7 @@ export function PresentationManagement({ searchTerm = '' }: PresentationManageme
                       </Badge>
                     )}
                     <Badge variant="default">
-                      {presentation.totalVotes || 0} votes
+                      {(presentation as any).totalVotes || 0} votes
                     </Badge>
                   </div>
                 </div>

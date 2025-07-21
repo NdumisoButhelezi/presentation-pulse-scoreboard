@@ -132,7 +132,7 @@ export function AdminDashboard() {
   useEffect(() => {
     const fetchJudges = async () => {
       try {
-        const res = await fetch('http://localhost:4000/api/judges');
+        const res = await fetch(import.meta.env.VITE_API_URL || 'http://localhost:4000/api/judges');
         const judgeList = await res.json();
         setJudges(judgeList);
       } catch (error) {
