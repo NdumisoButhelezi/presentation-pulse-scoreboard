@@ -31,7 +31,7 @@ const App = () => (
               <Route path="/admin" element={<AdminDashboard />} />
               <Route path="/hall-of-fame" element={<HallOfFame />} />
               <Route path="/my-reserved" element={<MyReserved />} />
-              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+              {/* ADD every CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>
