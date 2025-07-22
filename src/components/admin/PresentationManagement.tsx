@@ -30,6 +30,7 @@ export function PresentationManagement({ searchTerm = '' }: PresentationManageme
   const [filterRoom, setFilterRoom] = useState<string>('all');
 
   const [formData, setFormData] = useState({
+    paperId: '',
     title: '',
     authors: '',
     presentingAuthor: '',
@@ -67,6 +68,7 @@ export function PresentationManagement({ searchTerm = '' }: PresentationManageme
 
   const resetForm = () => {
     setFormData({
+      paperId: '',
       title: '',
       authors: '',
       presentingAuthor: '',
@@ -99,6 +101,7 @@ export function PresentationManagement({ searchTerm = '' }: PresentationManageme
     }
     
     const presentationData = {
+      paperId: formData.paperId,
       title: formData.title,
       authors: formData.authors.split(',').map(a => a.trim()),
       presentingAuthor: formData.presentingAuthor,
@@ -148,6 +151,7 @@ export function PresentationManagement({ searchTerm = '' }: PresentationManageme
   const handleEdit = (presentation: Presentation) => {
     setEditingPresentation(presentation);
     setFormData({
+      paperId: (presentation as any).paperId || '',
       title: presentation.title,
       authors: presentation.authors?.join(', ') || '',
       presentingAuthor: (presentation as any).presentingAuthor || '',
@@ -327,6 +331,17 @@ export function PresentationManagement({ searchTerm = '' }: PresentationManageme
               </DialogHeader>
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="md:col-span-2">
+                    <Label htmlFor="paperId">Paper ID *</Label>
+                    <Input
+                      id="paperId"
+                      value={formData.paperId}
+                      onChange={(e) => setFormData({...formData, paperId: e.target.value})}
+                      placeholder="Paper ID"
+                      required
+                    />
+                  </div>
+                  
                   <div className="md:col-span-2">
                     <Label htmlFor="title">Title *</Label>
                     <Input
@@ -544,6 +559,9 @@ export function PresentationManagement({ searchTerm = '' }: PresentationManageme
             <div className="space-y-4">
               {filteredPresentations.map((presentation) => (
                 <div key={presentation.id} className="border rounded-lg p-4 sm:p-6 space-y-3">
+                  {(presentation as any).paperId && (
+                    <p className="text-xs text-gray-500 font-semibold mb-1">Paper ID: {(presentation as any).paperId}</p>
+                  )}
                   <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                     <div className="flex-1 min-w-0">
                       <h3 className="font-semibold text-lg truncate">{presentation.title}</h3>
