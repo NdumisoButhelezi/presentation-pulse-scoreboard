@@ -651,7 +651,7 @@ export function Dashboard() {
               <span className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-3 h-3 bg-primary/30 rounded-full blur-sm animate-pulse" />
             </div>
             <div>
-              <h1 className="text-2xl font-extrabold tracking-tight text-primary drop-shadow-sm">Presentation Pulse</h1>
+              <h1 className="text-2xl font-extrabold tracking-tight text-primary drop-shadow-sm">Present Score</h1>
               <p className="text-sm text-muted-foreground font-medium">Real-time Scoring Dashboard</p>
             </div>
           </div>

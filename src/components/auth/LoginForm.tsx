@@ -141,7 +141,7 @@ export function LoginForm({ onBack, onSuccess }: LoginFormProps) {
           <div className="text-center mb-8 animate-fade-in">
             <Trophy className="h-12 w-12 text-primary mx-auto mb-4" />
             <h1 className="text-3xl font-extrabold bg-gradient-to-r from-yellow-400 via-yellow-500 to-orange-400 bg-clip-text text-transparent tracking-tight">
-              Presentation Pulse
+              Present Score
             </h1>
             <p className="text-muted-foreground mt-2 text-base">Real-time scoring & leaderboards</p>
           </div>

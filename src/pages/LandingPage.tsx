@@ -58,7 +58,7 @@ export function LandingPage() {
         <div className="w-full px-6 py-4 flex justify-between items-center">
           <div className="flex items-center">
             <Trophy className="h-8 w-8 text-yellow-400 mr-3" />
-            <span className="text-xl font-bold text-white">Presentation Pulse</span>
+            <span className="text-xl font-bold text-white">Present Score</span>
           </div>
           <div className="flex items-center gap-4">
             <Button 
@@ -249,10 +249,10 @@ export function LandingPage() {
                   <div className="bg-gradient-to-r from-blue-50 to-blue-100 border-2 border-blue-200 rounded-xl p-6">
                     <div className="flex items-center gap-3">
                       <Users className="h-6 w-6 text-blue-600" />
-                      <span className="text-lg text-blue-800 font-bold">Spectator Account</span>
+                      <span className="text-lg text-blue-800 font-bold">Attendee Account</span>
                     </div>
                     <p className="text-blue-700 mt-2 leading-relaxed">
-                      You will be registered as a spectator and can view and like presentations.
+                      You will be registered as an attendee and can view and rate presentations.
                     </p>
                   </div>
                   <Button 
@@ -276,7 +276,7 @@ export function LandingPage() {
             <div>
               <div className="flex items-center mb-6">
                 <Trophy className="h-10 w-10 text-yellow-400 mr-3" />
-                <span className="text-2xl font-bold">Presentation Pulse</span>
+                <span className="text-2xl font-bold">Present Score</span>
               </div>
               <p className="text-gray-400 text-lg leading-relaxed">
                 The most advanced conference scoring platform for ICTAS 2025.
