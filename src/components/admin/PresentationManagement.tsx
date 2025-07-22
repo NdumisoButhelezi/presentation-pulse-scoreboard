@@ -32,6 +32,7 @@ export function PresentationManagement({ searchTerm = '' }: PresentationManageme
   const [formData, setFormData] = useState({
     title: '',
     authors: '',
+    presentingAuthor: '',
     abstract: '',
     room: '',
     sessionDate: '',
@@ -68,6 +69,7 @@ export function PresentationManagement({ searchTerm = '' }: PresentationManageme
     setFormData({
       title: '',
       authors: '',
+      presentingAuthor: '',
       abstract: '',
       room: '',
       sessionDate: '',
@@ -99,6 +101,7 @@ export function PresentationManagement({ searchTerm = '' }: PresentationManageme
     const presentationData = {
       title: formData.title,
       authors: formData.authors.split(',').map(a => a.trim()),
+      presentingAuthor: formData.presentingAuthor,
       abstract: formData.abstract,
       room: formData.room,
       sessionDate: formData.sessionDate,
@@ -147,6 +150,7 @@ export function PresentationManagement({ searchTerm = '' }: PresentationManageme
     setFormData({
       title: presentation.title,
       authors: presentation.authors?.join(', ') || '',
+      presentingAuthor: (presentation as any).presentingAuthor || '',
       abstract: presentation.abstract || '',
       room: presentation.room || '',
       sessionDate: presentation.sessionDate || '',
@@ -346,6 +350,17 @@ export function PresentationManagement({ searchTerm = '' }: PresentationManageme
                   </div>
                   
                   <div className="md:col-span-2">
+                    <Label htmlFor="presentingAuthor">Presenting Author *</Label>
+                    <Input
+                      id="presentingAuthor"
+                      value={formData.presentingAuthor}
+                      onChange={(e) => setFormData({...formData, presentingAuthor: e.target.value})}
+                      placeholder="Presenting author name"
+                      required
+                    />
+                  </div>
+                  
+                  <div className="md:col-span-2">
                     <Label htmlFor="abstract">Abstract</Label>
                     <Textarea
                       id="abstract"
@@ -537,6 +552,9 @@ export function PresentationManagement({ searchTerm = '' }: PresentationManageme
                       </p>
                       {presentation.abstract && (
                         <p className="text-sm mt-2 line-clamp-2">{presentation.abstract}</p>
+                      )}
+                      {(presentation as any).presentingAuthor && (
+                        <p className="text-xs text-blue-700 font-semibold mt-1">Presenting Author: {(presentation as any).presentingAuthor}</p>
                       )}
                     </div>
                     

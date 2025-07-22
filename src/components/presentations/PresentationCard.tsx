@@ -178,6 +178,9 @@ export function PresentationCard({ presentation, userVote, hasVoted, reserved, o
             <span className="font-semibold">Authors:</span>
           </div>
           <p className="text-base font-medium text-primary/90">{presentation.authors.join(', ')}</p>
+          {(presentation as any).presentingAuthor && (
+            <p className="text-sm font-bold text-red-600 mt-1">Presenting Author: {(presentation as any).presentingAuthor}</p>
+          )}
         </div>
 
         <div className="space-y-2">

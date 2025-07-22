@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Clock, RefreshCw, Download, Filter, Search, AlertCircle, TrendingUp, ChevronDown, ChevronRight, History, Plus, Edit } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import React from 'react'; // Added for React.Fragment
+import { User } from '@/types';
 
 interface VoteAuditEntry {
   id: string;
@@ -35,6 +36,7 @@ interface VoteAuditViewProps {
 export function VoteAuditView({ searchTerm = '' }: VoteAuditViewProps) {
   const [votes, setVotes] = useState<VoteAuditEntry[]>([]);
   const [presentations, setPresentations] = useState<Record<string, any>>({});
+  const [users, setUsers] = useState<Record<string, User>>({});
   const [loading, setLoading] = useState(false);
   const [filterType, setFilterType] = useState<'all' | 'updated' | 'recent'>('all');
   const [filterRole, setFilterRole] = useState<'all' | 'judge' | 'spectator'>('all');
@@ -44,7 +46,21 @@ export function VoteAuditView({ searchTerm = '' }: VoteAuditViewProps) {
 
   useEffect(() => {
     loadVoteAuditData();
+    loadUsers();
   }, []);
+
+  const loadUsers = async () => {
+    try {
+      const usersSnapshot = await getDocs(collection(db, 'users'));
+      const usersMap: Record<string, User> = {};
+      usersSnapshot.docs.forEach(doc => {
+        usersMap[doc.id] = { id: doc.id, ...doc.data() } as User;
+      });
+      setUsers(usersMap);
+    } catch (error) {
+      // Optionally handle error
+    }
+  };
 
   const loadVoteAuditData = async () => {
     setLoading(true);
@@ -424,18 +440,21 @@ export function VoteAuditView({ searchTerm = '' }: VoteAuditViewProps) {
                       <React.Fragment key={vote.id}>
                         <TableRow className={vote.isUpdate ? "bg-yellow-50" : ""}>
                           <TableCell className="font-mono text-xs">
-                            <div className="flex items-center gap-2">
-                              <span>{vote.userId?.substring(0, 8)}...</span>
-                              {vote.isUpdate && (
-                                <Badge variant="outline" className="text-xs bg-yellow-100">
-                                  Updated
-                                </Badge>
-                              )}
-                              {vote.isAbsent && (
-                                <Badge variant="destructive" className="text-xs">
-                                  Absent
-                                </Badge>
-                              )}
+                            <div className="flex flex-col items-start gap-1">
+                              <div className="flex items-center gap-2">
+                                <span>{users[vote.userId]?.name || 'Unknown User'}</span>
+                                <Badge variant="secondary" className="text-xxs">{vote.userId?.substring(0, 8)}...</Badge>
+                                {vote.isUpdate && (
+                                  <Badge variant="outline" className="text-xs bg-yellow-100">
+                                    Updated
+                                  </Badge>
+                                )}
+                                {vote.isAbsent && (
+                                  <Badge variant="destructive" className="text-xs">
+                                    Absent
+                                  </Badge>
+                                )}
+                              </div>
                             </div>
                           </TableCell>
                           <TableCell className="max-w-xs">
