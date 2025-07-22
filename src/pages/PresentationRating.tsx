@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -15,6 +15,7 @@ import { RoomBadge } from '@/components/ui/room-badge';
 export default function PresentationRating() {
   const { presentationId } = useParams<{ presentationId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { currentUser } = useAuth();
   const [presentation, setPresentation] = useState<Presentation | null>(null);
   const [loading, setLoading] = useState(true);
@@ -124,7 +125,7 @@ export default function PresentationRating() {
               </CardContent>
             </Card>
             
-            <LoginForm onSuccess={handleLoginSuccess} />
+            <LoginForm onSuccess={handleLoginSuccess} next={location.pathname} />
             
             <div className="mt-4 text-center">
               <Button 

@@ -13,9 +13,10 @@ import { sendEmailVerification, getAuth } from 'firebase/auth';
 interface LoginFormProps {
   onBack?: () => void;
   onSuccess?: () => void;
+  next?: string;
 }
 
-export function LoginForm({ onBack, onSuccess }: LoginFormProps) {
+export function LoginForm({ onBack, onSuccess, next }: LoginFormProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const { login, register } = useAuth();
@@ -43,7 +44,9 @@ export function LoginForm({ onBack, onSuccess }: LoginFormProps) {
         title: "Welcome back!",
         description: "Successfully logged in.",
       });
-      if (onSuccess) {
+      if (next) {
+        navigate(next);
+      } else if (onSuccess) {
         onSuccess();
       }
     } catch (error: any) {
@@ -73,7 +76,9 @@ export function LoginForm({ onBack, onSuccess }: LoginFormProps) {
       setTab('login');
       setShowVerifyNotice(true);
       setVerifyEmail(registerData.email);
-      if (onSuccess) {
+      if (next) {
+        navigate(next);
+      } else if (onSuccess) {
         onSuccess();
       }
     } catch (error: any) {
