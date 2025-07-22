@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Shield, Eye, EyeOff } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useNavigate } from 'react-router-dom';
 
 export function AdminLogin() {
   const { adminLogin } = useAuth();
@@ -12,6 +13,11 @@ export function AdminLogin() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
+
+  const handleBackToHome = () => {
+    navigate('/');
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -80,6 +86,11 @@ export function AdminLogin() {
             <p className="text-sm text-center font-mono mt-1">
               Password: admin2025ICTAS
             </p>
+          </div>
+          <div className="mt-6 flex justify-center">
+            <Button variant="ghost" onClick={handleBackToHome}>
+              Back to Home
+            </Button>
           </div>
         </CardContent>
       </Card>

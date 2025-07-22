@@ -11,27 +11,40 @@ import {
   getDocs, 
   updateDoc, 
   doc, 
+  addDoc,
+  deleteDoc,
+  orderBy,
   serverTimestamp,
   persistentLocalCache,
   persistentSingleTabManager,
   CACHE_SIZE_UNLIMITED,
   enableIndexedDbPersistence,
   memoryLocalCache,
-  Firestore
+  Firestore,
+  getDoc
 } from "firebase/firestore";
 import { getAnalytics } from "firebase/analytics";
 import { DEFAULT_SCORING_CATEGORIES } from './scoringConfig';
+import { SpectatorQuestion } from '@/types';
+import { generatePresentationQRCode, getPresentationRatingUrl } from './qrcode';
 
 // Firebase configuration
 const firebaseConfig = {
-  apiKey: "AIzaSyDkqha2lfDvtuFhDhTR84SzauPtOlQRnbE",
-  authDomain: "presentscore-5068b.firebaseapp.com",
-  projectId: "presentscore-5068b",
-  storageBucket: "presentscore-5068b.firebasestorage.app",
-  messagingSenderId: "54064814647",
-  appId: "1:54064814647:web:b6a89104282f466c627db2",
-  measurementId: "G-QG21FNLV1V"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
 };
+
+// Validate config
+for (const [key, value] of Object.entries(firebaseConfig)) {
+  if (!value) {
+    throw new Error(`Missing Firebase config value for: ${key}`);
+  }
+}
 
 // Track if we're in offline mode
 let isOfflineMode = false;
@@ -109,7 +122,7 @@ try {
   }
 }
 
-export { db, isOfflineMode };
+export { db, isOfflineMode, firebaseConfig };
 
 // Track connection state
 let connectionAttempts = 0;
@@ -375,264 +388,198 @@ export const checkExistingVote = async (userId: string, presentationId: string) 
 
 // Process votes for a specific presentation and update its stats
 export const processVotes = async (presentationId: string) => {
-  console.log(`Processing votes for presentation ${presentationId}`);
-  
-  return safeFirestoreOperation(
-    async () => {
-      // Get all votes for this presentation
-      const votesRef = collection(db, 'votes');
-      const q = query(votesRef, where('presentationId', '==', presentationId));
-      const votesSnapshot = await getDocs(q);
-      
-      console.log(`Found ${votesSnapshot.docs.length} votes for this presentation`);
+  console.log(`Processing votes for presentation: ${presentationId}`);
+  // TODO: Implement vote processing logic
+};
 
-      // Define type for Vote
-      interface Vote {
-        id: string;
-        userId: string;
-        presentationId: string;
-        role?: string;
-        ratings?: Array<{ categoryId: string; score: number }>;
-        totalScore?: number;
-        score?: number;
-        timestamp: any;
-        [key: string]: any;
+export async function fixNanScores() {
+  const presentationsRef = collection(db, "presentations");
+  const snapshot = await getDocs(presentationsRef);
+  let fixedCount = 0;
+
+  for (const presentationDoc of snapshot.docs) {
+    const data = presentationDoc.data();
+    if (typeof data.judgeTotal !== "number" || isNaN(data.judgeTotal)) {
+      await updateDoc(doc(db, "presentations", presentationDoc.id), {
+        judgeTotal: 0,
+      });
+      fixedCount++;
+    }
+    // Optionally fix other NaN fields here
+  }
+  return fixedCount;
+}
+
+export async function recalculateAllPresentationStats() {
+  const presentationsRef = collection(db, "presentations");
+  const snapshot = await getDocs(presentationsRef);
+  let updatedCount = 0;
+
+  for (const presentationDoc of snapshot.docs) {
+    const presentationId = presentationDoc.id;
+    
+    // Get all votes for this presentation
+    const votesRef = collection(db, "votes");
+    const votesQuery = query(votesRef, where("presentationId", "==", presentationId));
+    const votesSnapshot = await getDocs(votesQuery);
+    
+    const votes = votesSnapshot.docs.map(doc => doc.data());
+    
+    // Calculate judge scores
+    const judgeVotes = votes.filter(vote => vote.role === "judge");
+    const judgeScores = judgeVotes.map(vote => {
+      if (typeof vote.totalScore === "number" && !isNaN(vote.totalScore)) {
+        return vote.totalScore;
       }
-
-      // Calculate judge scores with proper typing
-      const judgeVotes = votesSnapshot.docs
-        .map(doc => ({ id: doc.id, ...doc.data() } as Vote))
-        .filter(vote => vote.role === 'judge');
-        
-      console.log(`Found ${judgeVotes.length} judge votes`);
-
-      let judgeScores: number[] = [];
-      
-      // Handle both old and new vote formats
-      for (const vote of judgeVotes) {
-        let scoreValue = 0;
-        
-        try {
-          // Just use raw ratings sum - NO multiplication
           if (vote.ratings && Array.isArray(vote.ratings)) {
-            // Simple sum without any multiplication
-            scoreValue = vote.ratings.reduce((sum, rating) => {
-              const ratingScore = typeof rating.score === 'number' ? rating.score : 0;
-              return sum + ratingScore;
-            }, 0);
-            
-            console.log(`Pure sum for vote ${vote.id}: ${scoreValue}`);
-          } 
-          // Use pre-stored score if no ratings available
-          else if (typeof vote.totalScore === 'number' && !isNaN(vote.totalScore)) {
-            scoreValue = vote.totalScore;
-          } 
-          // Legacy format
-          else if (typeof vote.score === 'number' && !isNaN(vote.score)) {
-            scoreValue = vote.score;
-          }
-          
-          // Debug each vote calculation
-          console.log(`Processing vote for ${presentationId}: userId=${vote.userId}, scoreValue=${scoreValue}`);
-          
-          // Validate score and add to array if valid
-          if (!isNaN(scoreValue)) {
-            judgeScores.push(scoreValue);
-            console.log(`Added score: ${scoreValue}`);
-          } else {
-            console.log(`Invalid score value: ${scoreValue} - skipping`);
-          }
-        } catch (error) {
-          console.error("Error processing judge vote:", error);
-          // Skip this vote on error
-        }
+        return vote.ratings.reduce((sum, rating) => sum + (rating.score || 0), 0);
       }
-      
-      // Extra validation to ensure no invalid scores but don't filter out high values
-      const validJudgeScores = judgeScores
-        .map(score => Number(score))
-        .filter(score => !isNaN(score) && score > 0);
-      
-      console.log(`Final valid scores for ${presentationId}:`, validJudgeScores);
-      
-      // Count spectator likes
-      const spectatorLikes = votesSnapshot.docs
-        .map(doc => doc.data())
-        .filter(vote => vote.role === 'spectator')
-        .length;
-
-      // Calculate judge total - pure addition only
-      const judgeTotal = validJudgeScores.length > 0 
-        ? validJudgeScores.reduce((sum, score) => sum + score, 0)
-        : 0;
-
-      // Print each score value being summed for debugging
-      console.log(`Judge scores for ${presentationId}:`, validJudgeScores);
-      console.log(`Judge total for ${presentationId}: ${validJudgeScores.reduce((sum, score) => {
-        console.log(`Adding ${score} to running total ${sum}`);
-        return sum + score;
-      }, 0)}`);
-
-      // Add extra debug for "Performance Analysis..." presentation
-      if (validJudgeScores.length > 0) {
-        const { getDoc } = await import('firebase/firestore');
-        const presRef = doc(db, 'presentations', presentationId);
-        const presData = await getDoc(presRef);
-        const title = presData.data()?.title;
-        if (title && title.includes("Performance Analysis")) {
-          console.log(`Processing votes for target presentation "${title}":`, {
-            presentationId,
-            validJudgeScores,
+      return vote.score || 0;
+    }).filter(score => !isNaN(score));
+    
+    // Calculate spectator likes
+    const spectatorLikes = votes.filter(vote => vote.role === "spectator").length;
+    
+    // Calculate judge total
+    const judgeTotal = judgeScores.reduce((sum, score) => sum + score, 0);
+    
+    // Update presentation
+    await updateDoc(doc(db, "presentations", presentationId), {
+      judgeScores,
             judgeTotal,
             spectatorLikes
           });
-        }
-      }
-
-      // ALWAYS update the presentation, even if we have no scores
-      try {
-        const presentationRef = doc(db, 'presentations', presentationId);
-        
-        // Don't filter out high scores - they are valid from the scaled calculation
-        console.log(`Updating presentation ${presentationId} with judgeScores:`, validJudgeScores);
-        console.log(`Judge total for presentation ${presentationId}:`, judgeTotal);
-        
-        // Update with consistent data structures but keep the original scores
-        await updateDoc(presentationRef, {
-          judgeScores: validJudgeScores,
-          judgeTotal: judgeTotal, // Store the total explicitly
-          spectatorLikes: spectatorLikes || 0,
-          lastUpdated: serverTimestamp() || new Date()
-        });
-        
-      } catch (updateError) {
-        console.error(`Error updating presentation ${presentationId}:`, updateError);
-        
-        // Try one more time with a simpler update
-        try {
-          const presentationRef = doc(db, 'presentations', presentationId);
-          
-          // Calculate judge total here too
-          const judgeTotal = validJudgeScores.length > 0 
-            ? validJudgeScores.reduce((sum, score) => sum + score, 0)
-            : 0;
-            
-          await updateDoc(presentationRef, {
-            judgeScores: validJudgeScores.length > 0 ? validJudgeScores : [],
-            judgeTotal: judgeTotal, // Store total not average
-            spectatorLikes: spectatorLikes
-          });
-          console.log(`Retry update successful for ${presentationId}`);
-        } catch (retryError) {
-          console.error(`Even retry failed for ${presentationId}:`, retryError);
-        }
-      }
-
-      return { judgeScores: validJudgeScores, judgeTotal, spectatorLikes };
-    },
-    // Fallback value if operation fails completely
-    { judgeScores: [], judgeTotal: 0, spectatorLikes: 0 },
-    { retries: 2, retryDelay: 1500 }
-  );
-};
-
-// Recalculate stats for all presentations
-export const recalculateAllPresentationStats = async () => {
-  console.log('Recalculating all presentation stats...');
-  try {
-    const presentationsRef = collection(db, 'presentations');
-    const presentationsSnapshot = await getDocs(presentationsRef);
     
-    const updatePromises = presentationsSnapshot.docs.map(async (docSnapshot) => {
-      const presentationId = docSnapshot.id;
-      console.log(`Recalculating stats for presentation ${presentationId}`);
-      return processVotes(presentationId);
+    updatedCount++;
+  }
+  
+  return updatedCount;
+}
+
+// Spectator Questions Management
+export async function createSpectatorQuestion(questionData: Omit<SpectatorQuestion, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> {
+  const questionsRef = collection(db, "spectatorQuestions");
+  const docRef = await addDoc(questionsRef, {
+    ...questionData,
+    createdAt: new Date(),
+    updatedAt: new Date()
+  });
+  return docRef.id;
+}
+
+export async function updateSpectatorQuestion(questionId: string, updates: Partial<SpectatorQuestion>): Promise<void> {
+  const questionRef = doc(db, "spectatorQuestions", questionId);
+  await updateDoc(questionRef, {
+    ...updates,
+    updatedAt: new Date()
+  });
+}
+
+export async function deleteSpectatorQuestion(questionId: string): Promise<void> {
+  const questionRef = doc(db, "spectatorQuestions", questionId);
+  await deleteDoc(questionRef);
+}
+
+export async function getSpectatorQuestions(): Promise<SpectatorQuestion[]> {
+  const questionsRef = collection(db, "spectatorQuestions");
+  const questionsQuery = query(questionsRef, orderBy("order", "asc"));
+  const snapshot = await getDocs(questionsQuery);
+  
+  return snapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data(),
+    createdAt: doc.data().createdAt?.toDate() || new Date(),
+    updatedAt: doc.data().updatedAt?.toDate() || new Date()
+  })) as SpectatorQuestion[];
+}
+
+export async function getActiveSpectatorQuestions(): Promise<SpectatorQuestion[]> {
+  const questionsRef = collection(db, "spectatorQuestions");
+  const q = query(questionsRef, where("isActive", "==", true));
+  const snapshot = await getDocs(q);
+  
+  return snapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data()
+  })) as SpectatorQuestion[];
+}
+
+// QR Code Management Functions
+export async function generateQRCodeForPresentation(presentationId: string): Promise<{qrCode: string, qrCodeUrl: string}> {
+  try {
+    // Get presentation title for better QR code generation
+    const presentationRef = doc(db, "presentations", presentationId);
+    const presentationDoc = await getDoc(presentationRef);
+    
+    if (!presentationDoc.exists()) {
+      throw new Error("Presentation not found");
+    }
+    
+    const presentationData = presentationDoc.data();
+    const title = presentationData.title || "Presentation";
+    
+    // Generate QR code and URL
+    const qrCodeUrl = getPresentationRatingUrl(presentationId);
+    const qrCode = await generatePresentationQRCode(presentationId, title);
+    
+    // Update the presentation with QR code info
+    await updateDoc(presentationRef, {
+      qrCode,
+      qrCodeUrl,
+      updatedAt: new Date()
+    });
+    
+    return { qrCode, qrCodeUrl };
+  } catch (error) {
+    console.error("Error generating QR code for presentation:", error);
+    throw error;
+  }
+}
+
+export async function generateQRCodesForAllPresentations(): Promise<void> {
+  try {
+    const presentationsRef = collection(db, "presentations");
+    const snapshot = await getDocs(presentationsRef);
+    
+    const updatePromises = snapshot.docs.map(async (docRef) => {
+      const data = docRef.data();
+      
+      // Only generate QR code if it doesn't exist
+      if (!data.qrCode || !data.qrCodeUrl) {
+        try {
+          await generateQRCodeForPresentation(docRef.id);
+          console.log(`Generated QR code for presentation: ${data.title}`);
+        } catch (error) {
+          console.error(`Failed to generate QR code for presentation ${docRef.id}:`, error);
+        }
+      }
     });
     
     await Promise.all(updatePromises);
-    console.log(`Successfully recalculated stats for ${presentationsSnapshot.docs.length} presentations`);
-    return presentationsSnapshot.docs.length;
+    console.log("Finished generating QR codes for all presentations");
   } catch (error) {
-    console.error('Error recalculating presentation stats:', error);
+    console.error("Error generating QR codes for all presentations:", error);
     throw error;
   }
-};
+}
 
-// Add a utility function to fix all NaN scores - improved version
-export const fixNanScores = async () => {
-  console.log('Fixing NaN scores in all presentations...');
+export async function ensurePresentationHasQRCode(presentationId: string): Promise<void> {
   try {
-    const presentationsRef = collection(db, 'presentations');
-    const presentationsSnapshot = await getDocs(presentationsRef);
+    const presentationRef = doc(db, "presentations", presentationId);
+    const presentationDoc = await getDoc(presentationRef);
     
-    let fixedCount = 0;
-    
-    for (const docSnapshot of presentationsSnapshot.docs) {
-      const presentationId = docSnapshot.id;
-      const presentationData = docSnapshot.data();
-      
-      // Check if judgeScores contains any NaN values or is missing
-      let needsFixing = false;
-      
-      // If judgeScores is missing, undefined, or not an array
-      if (!presentationData.judgeScores || !Array.isArray(presentationData.judgeScores)) {
-        needsFixing = true;
-        console.log(`Fixing presentation ${presentationId}: judgeScores is not an array`);
-      } else {
-        // Check if any scores are invalid
-        for (const score of presentationData.judgeScores) {
-          const numScore = Number(score);
-          if (isNaN(numScore) || numScore <= 0) {
-            needsFixing = true;
-            console.log(`Fixing presentation ${presentationId}: contains invalid score: ${score}`);
-            break;
-          }
-        }
-      }
-      
-      if (needsFixing) {
-        fixedCount++;
-        console.log(`Fixing presentation ${presentationId}`);
-        
-        // Set judgeScores to an empty array
-        const presentationRef = doc(db, 'presentations', presentationId);
-        try {
-          await updateDoc(presentationRef, {
-            judgeScores: []
-          });
-          console.log(`Fixed presentation ${presentationId} - reset judgeScores to empty array`);
-        } catch (updateError) {
-          console.error(`Error fixing presentation ${presentationId}:`, updateError);
-        }
-      }
+    if (!presentationDoc.exists()) {
+      throw new Error("Presentation not found");
     }
     
-    console.log(`Fixed ${fixedCount} presentations with NaN scores`);
-    return fixedCount;
+    const data = presentationDoc.data();
+    
+    // Generate QR code if it doesn't exist
+    if (!data.qrCode || !data.qrCodeUrl) {
+      await generateQRCodeForPresentation(presentationId);
+    }
   } catch (error) {
-    console.error('Error fixing NaN scores:', error);
+    console.error("Error ensuring presentation has QR code:", error);
     throw error;
   }
-};
-
-// Add this utility function for chart data using judge total
-export const prepareChartData = (presentations: any[]) => {
-  return presentations.map(presentation => {
-    // Get judge total (sum of all scores)
-    const judgeTotal = typeof presentation.judgeTotal === 'number' ? presentation.judgeTotal :
-      (presentation.judgeScores?.length 
-        ? presentation.judgeScores.reduce((sum: number, score: number) => sum + score, 0)
-        : 0);
-    
-    // Final score is just the judge total
-    const finalScore = judgeTotal;
-    
-    return {
-      ...presentation,
-      judgeTotal: judgeTotal,
-      finalScore: finalScore
-    };
-  });
-};
-
-export default app;
+}

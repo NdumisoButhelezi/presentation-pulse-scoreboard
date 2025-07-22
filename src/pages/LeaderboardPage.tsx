@@ -6,7 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Presentation } from '@/types';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { Trophy, ThumbsUp, RefreshCw, Medal, Filter } from 'lucide-react';
+import { Trophy, ThumbsUp, RefreshCw, Medal, Filter, Star } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -116,7 +116,7 @@ export function LeaderboardPage() {
         return p.room === filter;
       });
     
-    // Sort presentations by judge total with spectator likes as tiebreaker
+    // Sort presentations by judge total with attendee ratings as tiebreaker
     return sortByJudgeTotal(processedPresentations);
   }, [presentations, filter]);
   
@@ -216,8 +216,8 @@ export function LeaderboardPage() {
                     <th className="p-3">Title</th>
                     <th className="p-3">Authors</th>
                     <th className="p-3 whitespace-nowrap">Room</th>
-                    <th className="p-3 whitespace-nowrap text-center">Judge Total</th> {/* Changed from Judge Avg/Score */}
-                    <th className="p-3 whitespace-nowrap text-center">Spectator Likes</th>
+                    <th className="p-3 whitespace-nowrap text-center">Judge Total</th>
+                    <th className="p-3 whitespace-nowrap text-center">Attendee Ratings</th>
                     <th className="p-3 whitespace-nowrap text-center">Final Score</th>
                   </tr>
                 </thead>
@@ -320,10 +320,10 @@ export function LeaderboardPage() {
               <div>
                 <h3 className="text-sm font-medium flex items-center">
                   <ThumbsUp className="h-4 w-4 mr-1 text-accent" />
-                  Spectator Likes
+                  Attendee Ratings
                 </h3>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Total number of likes from spectators. These do not affect the final score or ranking.
+                  Total number of ratings from attendees. These do not affect the final score or ranking.
                 </p>
               </div>
               
@@ -334,7 +334,7 @@ export function LeaderboardPage() {
                 </h3>
                 <p className="text-xs text-muted-foreground mt-1">
                   Equal to the total judge score - the direct sum of all judge scores without any multiplication or weighting. 
-                  Presentations are ranked by this value, with spectator likes used only as a tiebreaker.
+                  Presentations are ranked by this value, with attendee ratings used only as a tiebreaker.
                 </p>
               </div>
             </div>

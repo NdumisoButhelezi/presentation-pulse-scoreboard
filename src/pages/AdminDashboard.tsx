@@ -7,17 +7,25 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AdminLogin } from '@/components/admin/AdminLogin';
 import { PresentationManagement } from '@/components/admin/PresentationManagement';
 import { ReportsView } from '@/components/admin/ReportsView';
+import { SpectatorQuestionManagement } from '@/components/admin/SpectatorQuestionManagement';
+import { VoteAuditView } from '@/components/admin/VoteAuditView';
+import { UserManagement } from '@/components/admin/UserManagement';
+import { JudgeAssignmentManagement } from '@/components/admin/JudgeAssignmentManagement';
+import { SignatureManagement } from '@/components/admin/SignatureManagement';
+import { SignatureAuditView } from '@/components/admin/SignatureAuditView';
+import { CertificateManagement } from '@/components/admin/CertificateManagement';
 import { cleanupDuplicateVotes, recalculateAllPresentationStats, fixNanScores, db } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { 
   Shield, BarChart3, FileText, LogOut, Database, RefreshCw, Search, 
   CalendarClock, AlertTriangle, Menu, X, Settings, Users, TrendingUp,
-  Activity, BarChart, PieChart, Download, Upload, Trash2, Plus
+  Activity, BarChart, PieChart, Download, Upload, Trash2, Plus, Clock, QrCode, PenTool
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { bulkImportConferencePresentations } from '../lib/importPresentations';
 import { collection, getDocs, doc, updateDoc } from 'firebase/firestore';
 import { ROOMS } from '@/types';
+import { generateQRCodesForAllPresentations } from '@/lib/firebase';
 
 export function AdminDashboard() {
   const { currentUser, logout } = useAuth();
@@ -29,14 +37,9 @@ export function AdminDashboard() {
   const [loggingOut, setLoggingOut] = useState(false);
   const [recalculating, setRecalculating] = useState(false);
   const [fixingScores, setFixingScores] = useState(false);
+  const [generatingQRCodes, setGeneratingQRCodes] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeSection, setActiveSection] = useState('overview');
-
-  // --- Judge Assignment State ---
-  const [judges, setJudges] = useState<any[]>([]);
-  const [selectedJudgeId, setSelectedJudgeId] = useState<string>('');
-  const [selectedJudgeRooms, setSelectedJudgeRooms] = useState<string[]>([]);
-  const [savingAssignment, setSavingAssignment] = useState(false);
 
   const handleLogout = async () => {
     setLoggingOut(true);
@@ -128,75 +131,60 @@ export function AdminDashboard() {
     }
   };
 
-  // Load judges from backend API (must be implemented server-side)
+  const handleGenerateQRCodes = async () => {
+    setGeneratingQRCodes(true);
+    try {
+      await generateQRCodesForAllPresentations();
+      toast({
+        title: "QR Codes Generated",
+        description: "Successfully generated QR codes for all presentations.",
+      });
+    } catch (error) {
+      console.error('Error generating QR codes:', error);
+      toast({
+        title: "Error",
+        description: "Failed to generate QR codes.",
+        variant: "destructive",
+      });
+    } finally {
+      setGeneratingQRCodes(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchJudges = async () => {
+    const loadJudges = async () => {
       try {
+        // Load judges from API and Firestore
         const res = await fetch(import.meta.env.VITE_API_URL || 'http://localhost:4000/api/judges');
         const judgeList = await res.json();
-        setJudges(judgeList);
+        // Judge data is now handled by JudgeAssignmentManagement component
       } catch (error) {
         toast({
           title: "Error",
-          description: "Failed to load judges from API.",
+          description: "Failed to load judges.",
           variant: "destructive",
         });
       }
     };
-    fetchJudges();
+    loadJudges();
   }, []);
 
-  // When a judge is selected, load their assigned rooms
-  useEffect(() => {
-    if (!selectedJudgeId) {
-      setSelectedJudgeRooms([]);
-      return;
-    }
-    const judge = judges.find(j => j.id === selectedJudgeId);
-    setSelectedJudgeRooms(judge?.assignedRooms || []);
-  }, [selectedJudgeId, judges]);
-
-  // Save assigned rooms to Firestore and update local state
-  const handleSaveAssignment = async () => {
-    if (!selectedJudgeId) return;
-    setSavingAssignment(true);
-    try {
-      await updateDoc(doc(db, 'users', selectedJudgeId), {
-        assignedRooms: selectedJudgeRooms,
-      });
-      // Update local state so UI reflects the change immediately
-      setJudges(judges =>
-        judges.map(j =>
-          j.id === selectedJudgeId
-            ? { ...j, assignedRooms: selectedJudgeRooms }
-            : j
-        )
-      );
-      toast({
-        title: "Success",
-        description: "Judge room assignments updated.",
-      });
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to update judge assignments.",
-        variant: "destructive",
-      });
-    } finally {
-      setSavingAssignment(false);
-    }
-  };
-
-  if (!currentUser || currentUser.role !== 'admin') {
+  if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'conference-chair' && currentUser.role !== 'technical-chair')) {
     return <AdminLogin />;
   }
 
   const navigationItems = [
     { id: 'overview', label: 'Overview', icon: BarChart3 },
     { id: 'presentations', label: 'Presentations', icon: FileText },
+    { id: 'user-management', label: 'User Management', icon: Users },
+    { id: 'spectator-questions', label: 'Attendee Questions', icon: Users },
     { id: 'reports', label: 'Reports', icon: BarChart },
     { id: 'data-integrity', label: 'Data Integrity', icon: Database },
     { id: 'judge-assignment', label: 'Judge Assignment', icon: Users },
+    { id: 'vote-audit', label: 'Vote Audit', icon: Clock },
+    { id: 'signature-management', label: 'Signature Management', icon: PenTool },
+    { id: 'signature-audit', label: 'Signature Audit', icon: PenTool },
+    { id: 'certificate-management', label: 'Certificate Management', icon: FileText },
   ];
 
   const renderContent = () => {
@@ -255,7 +243,7 @@ export function AdminDashboard() {
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm font-medium text-orange-600 mb-1">Spectators</p>
+                      <p className="text-sm font-medium text-orange-600 mb-1">Attendees</p>
                       <p className="text-3xl font-bold text-orange-900">4</p>
                       <p className="text-xs text-orange-600 mt-1">Active</p>
                     </div>
@@ -340,6 +328,21 @@ export function AdminDashboard() {
                       {fixingScores ? 'Fixing...' : 'Fix NaN Scores'}
                     </span>
                   </Button>
+                  
+                  <Button
+                    onClick={handleGenerateQRCodes}
+                    disabled={generatingQRCodes}
+                    className="h-auto py-4 flex flex-col items-center gap-2"
+                  >
+                    {generatingQRCodes ? (
+                      <RefreshCw className="h-5 w-5 animate-spin" />
+                    ) : (
+                      <QrCode className="h-5 w-5" />
+                    )}
+                    <span className="text-sm font-medium">
+                      {generatingQRCodes ? 'Generating...' : 'Generate QR Codes'}
+                    </span>
+                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -401,8 +404,14 @@ export function AdminDashboard() {
       case 'presentations':
         return <PresentationManagement searchTerm={searchTerm} />;
 
+      case 'user-management':
+        return <UserManagement searchTerm={searchTerm} />;
+
       case 'reports':
         return <ReportsView searchTerm={searchTerm} />;
+
+      case 'spectator-questions':
+        return <SpectatorQuestionManagement searchTerm={searchTerm} />;
 
       case 'data-integrity':
         return (
@@ -464,7 +473,7 @@ export function AdminDashboard() {
                     <ul className="text-sm text-muted-foreground space-y-1">
                       <li>• One vote per user per presentation</li>
                       <li>• Users can update their votes anytime</li>
-                      <li>• Judges score from 1-10, spectators like (1) or don't like (0)</li>
+                      <li>• Judges score from 1-10, attendees rate using structured questions</li>
                       <li>• Most recent vote is kept in case of duplicates</li>
                     </ul>
                   </div>
@@ -510,67 +519,19 @@ export function AdminDashboard() {
         );
 
       case 'judge-assignment':
-        return (
-          <div className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <Users className="h-5 w-5 mr-2" />
-                  Assign Judges to Rooms
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div>
-                    <label className="block font-medium mb-1">Select Judge (registered):</label>
-                    <select
-                      className="border rounded px-3 py-2 w-full"
-                      value={selectedJudgeId}
-                      onChange={e => setSelectedJudgeId(e.target.value)}
-                    >
-                      <option value="">-- Select Judge --</option>
-                      {judges.map(judge => (
-                        <option key={judge.id} value={judge.id}>
-                          {judge.name || judge.email || judge.id}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  {selectedJudgeId && (
-                    <div>
-                      <label className="block font-medium mb-1">Assign Rooms:</label>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                        {ROOMS.map(room => (
-                          <label key={room} className="flex items-center space-x-2 p-2 border rounded hover:bg-muted/50">
-                            <input
-                              type="checkbox"
-                              checked={selectedJudgeRooms.includes(room)}
-                              onChange={e => {
-                                if (e.target.checked) {
-                                  setSelectedJudgeRooms([...selectedJudgeRooms, room]);
-                                } else {
-                                  setSelectedJudgeRooms(selectedJudgeRooms.filter(r => r !== room));
-                                }
-                              }}
-                            />
-                            <span className="text-sm">{room}</span>
-                          </label>
-                        ))}
-                      </div>
-                      <Button
-                        className="mt-4 w-full sm:w-auto"
-                        onClick={handleSaveAssignment}
-                        disabled={savingAssignment}
-                      >
-                        {savingAssignment ? "Saving..." : "Save Assignment"}
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        );
+        return <JudgeAssignmentManagement />;
+
+      case 'vote-audit':
+        return <VoteAuditView />;
+
+      case 'signature-management':
+        return <SignatureManagement />;
+
+      case 'signature-audit':
+        return <SignatureAuditView />;
+
+      case 'certificate-management':
+        return <CertificateManagement />;
 
       default:
         return <div>Select a section from the sidebar</div>;

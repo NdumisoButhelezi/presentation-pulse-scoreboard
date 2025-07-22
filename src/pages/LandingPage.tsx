@@ -2,7 +2,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Trophy, Users, BarChart3, Shield, ArrowRight, Play, Star, Calendar, MapPin, LogIn } from 'lucide-react';
+import { Trophy, Users, BarChart3, Shield, ArrowRight, Play, Star, Calendar, MapPin, LogIn, UserCheck } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import { LoginForm } from '@/components/auth/LoginForm';
@@ -28,12 +28,12 @@ export function LandingPage() {
     {
       icon: Trophy,
       title: "Real-time Scoring",
-      description: "Watch live scores update as judges and spectators vote on presentations"
+      description: "Watch live scores update as judges and attendees vote on presentations"
     },
     {
       icon: Users,
       title: "Interactive Voting",
-      description: "Spectators can like presentations while judges provide detailed scores"
+      description: "Attendees can rate presentations while judges provide detailed scores"
     },
     {
       icon: BarChart3,
@@ -242,7 +242,7 @@ export function LandingPage() {
             <Card className="shadow-2xl border-0">
               <CardHeader className="text-center pb-6">
                 <CardTitle className="text-3xl font-bold">Create Your Account</CardTitle>
-                <p className="text-gray-600 text-lg">Join as a spectator to view and like presentations</p>
+                <p className="text-gray-600 text-lg">Join as an attendee to view and rate presentations</p>
               </CardHeader>
               <CardContent className="p-8">
                 <div className="space-y-6">

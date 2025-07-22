@@ -1,6 +1,63 @@
 /**
  * Scoring utilities for the Presentation Pulse application
  */
+import { SpectatorVote, SpectatorRating } from '@/types';
+
+/**
+ * Calculate spectator rating total from spectator votes
+ */
+export function calculateSpectatorTotal(spectatorVotes: SpectatorVote[] = []): number {
+  if (!Array.isArray(spectatorVotes) || spectatorVotes.length === 0) return 0;
+  
+  try {
+    const total = spectatorVotes.reduce((sum, vote) => {
+      if (vote.totalScore && typeof vote.totalScore === 'number' && !isNaN(vote.totalScore)) {
+        return sum + vote.totalScore;
+      }
+      // Fallback: calculate from ratings if totalScore is missing
+      if (vote.ratings && Array.isArray(vote.ratings)) {
+        const voteTotal = vote.ratings.reduce((voteSum, rating) => 
+          voteSum + (typeof rating.score === 'number' ? rating.score : 0), 0);
+        return sum + voteTotal;
+      }
+      return sum;
+    }, 0);
+    
+    return total;
+  } catch (error) {
+    console.error('Error calculating spectator total:', error);
+    return 0;
+  }
+}
+
+/**
+ * Get average spectator rating per question
+ */
+export function getSpectatorAverageByQuestion(spectatorVotes: SpectatorVote[] = []): Record<string, number> {
+  if (!Array.isArray(spectatorVotes) || spectatorVotes.length === 0) return {};
+  
+  const questionTotals: Record<string, { sum: number; count: number }> = {};
+  
+  spectatorVotes.forEach(vote => {
+    if (vote.ratings && Array.isArray(vote.ratings)) {
+      vote.ratings.forEach(rating => {
+        if (!questionTotals[rating.questionId]) {
+          questionTotals[rating.questionId] = { sum: 0, count: 0 };
+        }
+        questionTotals[rating.questionId].sum += rating.score;
+        questionTotals[rating.questionId].count += 1;
+      });
+    }
+  });
+  
+  const averages: Record<string, number> = {};
+  Object.keys(questionTotals).forEach(questionId => {
+    const { sum, count } = questionTotals[questionId];
+    averages[questionId] = count > 0 ? Math.round((sum / count) * 10) / 10 : 0;
+  });
+  
+  return averages;
+}
 
 /**
  * Calculate the final score for a presentation

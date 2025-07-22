@@ -6,9 +6,11 @@ import { RoomBadge } from '@/components/ui/room-badge';
 import { VoteModal } from './VoteModal';
 import { Presentation } from '@/types';
 import { useAuth } from '@/contexts/AuthContext';
-import { Clock, Users, ThumbsUp, Trophy, Star, Bookmark, BookmarkCheck } from 'lucide-react';
+import { Clock, Users, ThumbsUp, Trophy, Star, Bookmark, BookmarkCheck, CheckCircle2, Circle, QrCode, Download } from 'lucide-react';
 import { getJudgeTotal } from '@/lib/scores';
 import { ScoreDisplay } from '@/components/ui/score-display';
+import { ensurePresentationHasQRCode } from '@/lib/firebase';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 interface PresentationCardProps {
   presentation: Presentation;
@@ -16,10 +18,13 @@ interface PresentationCardProps {
   hasVoted?: boolean;
   reserved?: boolean;
   onReserve?: () => void;
+  onVoteSubmitted?: () => void; // Add callback for vote submission
 }
 
-export function PresentationCard({ presentation, userVote, hasVoted, reserved, onReserve }: PresentationCardProps) {
+export function PresentationCard({ presentation, userVote, hasVoted, reserved, onReserve, onVoteSubmitted }: PresentationCardProps) {
   const [isVoteModalOpen, setIsVoteModalOpen] = useState(false);
+  const [showQRCode, setShowQRCode] = useState(false);
+  const [qrCodeLoading, setQrCodeLoading] = useState(false);
   const { currentUser } = useAuth();
 
   // Check if this presentation ishjyjh currently happening
@@ -68,11 +73,48 @@ export function PresentationCard({ presentation, userVote, hasVoted, reserved, o
   useEffect(() => {
     if (displayedLikes !== spectatorLikes) {
       const diff = spectatorLikes - displayedLikes;
-      const step = diff > 0 ? 1 : -1;
-      const timeout = setTimeout(() => setDisplayedLikes(displayedLikes + step), 30);
-      return () => clearTimeout(timeout);
+      const increment = diff > 0 ? Math.ceil(diff / 10) : Math.floor(diff / 10);
+      const timer = setInterval(() => {
+        setDisplayedLikes(prev => {
+          const next = prev + increment;
+          return diff > 0 ? Math.min(next, spectatorLikes) : Math.max(next, spectatorLikes);
+        });
+      }, 50);
+      return () => clearInterval(timer);
     }
   }, [spectatorLikes, displayedLikes]);
+
+  // Ensure QR code exists for this presentation
+  useEffect(() => {
+    if (!presentation.qrCode && !qrCodeLoading) {
+      const generateQRCode = async () => {
+        try {
+          setQrCodeLoading(true);
+          await ensurePresentationHasQRCode(presentation.id);
+        } catch (error) {
+          console.error('Failed to generate QR code:', error);
+        } finally {
+          setQrCodeLoading(false);
+        }
+      };
+      generateQRCode();
+    }
+  }, [presentation.id, presentation.qrCode, qrCodeLoading]);
+
+  const handleShowQRCode = () => {
+    setShowQRCode(true);
+  };
+
+  const handleDownloadQRCode = () => {
+    if (presentation.qrCode) {
+      const link = document.createElement('a');
+      link.href = presentation.qrCode;
+      link.download = `qr-code-${presentation.title.replace(/[^a-zA-Z0-9]/g, '-')}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  };
 
   // Animated progress bar for judge voting
   const progress = judgeCount > 0 ? Math.min(100, Math.round((totalJudgeScore / Math.max(maxPossibleScore, 1)) * 100)) : 0;
@@ -97,8 +139,24 @@ export function PresentationCard({ presentation, userVote, hasVoted, reserved, o
         )}
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1">
-            <CardTitle className="text-lg leading-tight mb-2">{presentation.title}</CardTitle>
-            <RoomBadge room={presentation.room} className="mb-2" />
+            <div className="flex items-center gap-2 mb-2">
+              <CardTitle className="text-lg leading-tight">{presentation.title}</CardTitle>
+              {/* Judge Status Indicator */}
+              {currentUser?.role === 'judge' && (
+                <div className="flex items-center">
+                  {hasVoted ? (
+                    <div title="Already Judged">
+                      <CheckCircle2 className="h-5 w-5 text-green-600" />
+                    </div>
+                  ) : (
+                    <div title="Not Yet Judged">
+                      <Circle className="h-5 w-5 text-orange-500" />
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            <RoomBadge room={presentation.room as "AZANIA" | "ALOE" | "CYCAD" | "KHANYA"} className="mb-2" />
           </div>
           <div className="text-right">
             <div className="flex items-center text-sm text-muted-foreground mb-1">
@@ -175,11 +233,30 @@ export function PresentationCard({ presentation, userVote, hasVoted, reserved, o
                   </>
                 ) : (
                   <>
-                    <ThumbsUp className="h-4 w-4 mr-1 fill-current" />
-                    Liked
+                    <Star className="h-4 w-4 mr-1 fill-current" />
+                    Rated
                   </>
                 )}
               </div>
+            )}
+            {/* Judge Status Badge */}
+            {currentUser?.role === 'judge' && (
+              <Badge 
+                variant={hasVoted ? "default" : "destructive"} 
+                className={`text-xs ${hasVoted ? "bg-green-100 text-green-800 border-green-300" : "bg-orange-100 text-orange-800 border-orange-300"}`}
+              >
+                {hasVoted ? (
+                  <>
+                    <CheckCircle2 className="h-3 w-3 mr-1" />
+                    Judged
+                  </>
+                ) : (
+                  <>
+                    <Circle className="h-3 w-3 mr-1" />
+                    Pending
+                  </>
+                )}
+              </Badge>
             )}
             <Button
               variant={hasVoted ? "outline" : "vote"}
@@ -188,8 +265,19 @@ export function PresentationCard({ presentation, userVote, hasVoted, reserved, o
               className="shadow-sm"
             >
               {hasVoted 
-                ? (currentUser.role === 'judge' ? "Update Vote" : "Update Like") 
-                : (currentUser.role === 'judge' ? "Vote Now" : "Like")}
+                ? (currentUser.role === 'judge' ? "Update Vote" : "Update Rating") 
+                : (currentUser.role === 'judge' ? "Vote Now" : "Rate")}
+            </Button>
+            
+            {/* QR Code Button */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleShowQRCode}
+              className="text-muted-foreground hover:text-foreground"
+              disabled={qrCodeLoading}
+            >
+              <QrCode className="h-4 w-4" />
             </Button>
           </div>
         </div>
@@ -215,11 +303,78 @@ export function PresentationCard({ presentation, userVote, hasVoted, reserved, o
           </Button>
         </div>
       )}
+      
+      {/* QR Code Modal */}
+      <Dialog open={showQRCode} onOpenChange={setShowQRCode}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center">
+              <QrCode className="h-5 w-5 mr-2" />
+              Rate via QR Code
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="text-center">
+              <h4 className="font-medium mb-2">{presentation.title}</h4>
+              <p className="text-sm text-muted-foreground mb-4">
+                Scan this QR code with your phone to rate this presentation
+              </p>
+              
+              {presentation.qrCode ? (
+                <div className="bg-white p-4 rounded-lg border inline-block">
+                  <img 
+                    src={presentation.qrCode} 
+                    alt={`QR Code for ${presentation.title}`}
+                    className="w-48 h-48 mx-auto"
+                  />
+                </div>
+              ) : (
+                <div className="bg-gray-100 p-8 rounded-lg border">
+                  <QrCode className="h-12 w-12 mx-auto text-gray-400 mb-2" />
+                  <p className="text-sm text-gray-500">
+                    {qrCodeLoading ? "Generating QR code..." : "QR code not available"}
+                  </p>
+                </div>
+              )}
+            </div>
+            
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={handleDownloadQRCode}
+                disabled={!presentation.qrCode}
+                className="flex-1"
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Download
+              </Button>
+              <Button
+                variant="default"
+                onClick={() => setShowQRCode(false)}
+                className="flex-1"
+              >
+                Close
+              </Button>
+            </div>
+            
+            {presentation.qrCodeUrl && (
+              <div className="text-center">
+                <p className="text-xs text-muted-foreground mb-2">Direct link:</p>
+                <code className="text-xs bg-gray-100 px-2 py-1 rounded break-all">
+                  {presentation.qrCodeUrl}
+                </code>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+      
       <VoteModal
         presentation={presentation}
         isOpen={isVoteModalOpen}
         onClose={() => setIsVoteModalOpen(false)}
         currentVote={userVote}
+        onVoteSubmitted={onVoteSubmitted}
       />
     </Card>
   );

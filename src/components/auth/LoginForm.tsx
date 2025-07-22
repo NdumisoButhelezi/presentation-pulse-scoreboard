@@ -6,20 +6,24 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
-import { Eye, EyeOff, Trophy, Users, ArrowLeft } from 'lucide-react';
+import { Eye, EyeOff, Trophy, Users, ArrowLeft, Mail } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { sendEmailVerification, getAuth } from 'firebase/auth';
 
 interface LoginFormProps {
   onBack?: () => void;
+  onSuccess?: () => void;
 }
 
-export function LoginForm({ onBack }: LoginFormProps) {
+export function LoginForm({ onBack, onSuccess }: LoginFormProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const { login, register } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
   const [tab, setTab] = useState<'login' | 'register'>('login');
+  const [showVerifyNotice, setShowVerifyNotice] = useState(false);
+  const [verifyEmail, setVerifyEmail] = useState('');
 
   const [loginData, setLoginData] = useState({ email: '', password: '' });
   const [registerData, setRegisterData] = useState({
@@ -32,13 +36,21 @@ export function LoginForm({ onBack }: LoginFormProps) {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setShowVerifyNotice(false);
     try {
       await login(loginData.email, loginData.password);
       toast({
         title: "Welcome back!",
         description: "Successfully logged in.",
       });
+      if (onSuccess) {
+        onSuccess();
+      }
     } catch (error: any) {
+      if (error.message && error.message.includes('verify your email address')) {
+        setShowVerifyNotice(true);
+        setVerifyEmail(loginData.email);
+      }
       toast({
         title: "Login Failed",
         description: error.message || "Please check your credentials and try again.",
@@ -55,9 +67,15 @@ export function LoginForm({ onBack }: LoginFormProps) {
     try {
       await register(registerData.email, registerData.password, registerData.name, 'spectator');
       toast({
-        title: "Account Created!",
-        description: "Welcome to Presentation Pulse Scoreboard. You are registered as a spectator.",
+        title: "Account Created Successfully",
+        description: "A verification email has been sent. Please check your inbox and verify your email before logging in.",
       });
+      setTab('login');
+      setShowVerifyNotice(true);
+      setVerifyEmail(registerData.email);
+      if (onSuccess) {
+        onSuccess();
+      }
     } catch (error: any) {
       toast({
         title: "Registration Failed",
@@ -66,6 +84,32 @@ export function LoginForm({ onBack }: LoginFormProps) {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleResendVerification = async () => {
+    try {
+      const auth = getAuth();
+      const user = auth.currentUser;
+      if (user && user.email === verifyEmail) {
+        await sendEmailVerification(user);
+        toast({
+          title: "Verification Email Sent",
+          description: "Please check your inbox for the verification link.",
+        });
+      } else {
+        toast({
+          title: "Resend Failed",
+          description: "Please log in again to resend the verification email.",
+          variant: "destructive",
+        });
+      }
+    } catch (error: any) {
+      toast({
+        title: "Resend Failed",
+        description: error.message || "Could not resend verification email.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -212,10 +256,10 @@ export function LoginForm({ onBack }: LoginFormProps) {
                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                       <div className="flex items-center gap-2">
                         <Users className="h-4 w-4 text-blue-600" />
-                        <span className="text-sm text-blue-800 font-medium">Spectator Account</span>
+                        <span className="text-sm text-blue-800 font-medium">Attendee Account</span>
                       </div>
-                      <p className="text-xs text-blue-600 mt-1">
-                        You will be registered as a spectator and can view and like presentations.
+                      <p className="text-blue-700 text-sm">
+                        You will be registered as an attendee and can view and rate presentations.
                       </p>
                     </div>
                     <Button type="submit" className="w-full rounded-full bg-yellow-400 hover:bg-yellow-500 text-black font-bold py-3 text-lg shadow-lg transition-all duration-200" disabled={loading}>
@@ -226,6 +270,16 @@ export function LoginForm({ onBack }: LoginFormProps) {
               </Tabs>
             </CardContent>
           </Card>
+          {showVerifyNotice && (
+            <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded text-yellow-900 flex items-center space-x-2">
+              <Mail className="h-5 w-5 mr-2" />
+              <div>
+                <div className="font-semibold">Email Verification Required</div>
+                <div className="text-sm">Please check your inbox for a verification link. You must verify your email before logging in.</div>
+                <Button variant="link" size="sm" onClick={handleResendVerification} className="p-0 h-auto mt-1">Resend Verification Email</Button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

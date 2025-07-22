@@ -2,6 +2,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { LoginForm } from '@/components/auth/LoginForm';
 import { LandingPage } from '@/pages/LandingPage';
 import { Dashboard } from '@/pages/Dashboard';
+import { AdminDashboard } from '@/pages/AdminDashboard';
 import { RefreshCw, Trophy, Shield } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
@@ -25,6 +26,12 @@ const Index = () => {
     return <LandingPage />;
   }
 
+  // Route admin, conference chair, and technical chair users to AdminDashboard
+  if (currentUser.role === 'admin' || currentUser.role === 'conference-chair' || currentUser.role === 'technical-chair') {
+    return <AdminDashboard />;
+  }
+
+  // Route all other users (judges, attendees) to regular Dashboard
   return <Dashboard />;
 };
 

@@ -11,11 +11,14 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Presentation, ROOMS, Vote } from '@/types';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { Search, Filter, Trophy, Users, LogOut, RefreshCw, ThumbsUp, Calendar, Clock, MapPin, Play, Coffee, Utensils, Bookmark, BookmarkCheck } from 'lucide-react';
+import { Search, Filter, Trophy, Users, LogOut, RefreshCw, ThumbsUp, Calendar, Clock, MapPin, Play, Coffee, Utensils, Bookmark, BookmarkCheck, CheckCircle2, Circle, AlertCircle, Star } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useNavigate } from 'react-router-dom';
 import { ParticleBackground } from '@/components/ui/ParticleBackground';
 import { Skeleton } from '@/components/ui/skeleton';
+import { SignatureOnboarding } from '@/components/auth/SignatureOnboarding';
+import { useSignatureOnboarding } from '@/hooks/use-signature-onboarding';
+import { useMediaQuery } from '@/hooks/use-media-query';
 
 // Add agenda item types
 interface AgendaItem {
@@ -31,21 +34,27 @@ interface AgendaItem {
 }
 
 export function Dashboard() {
-  const { currentUser, logout } = useAuth();
+  const { currentUser, firebaseUser, logout } = useAuth();
+  const { needsSignatureOnboarding } = useSignatureOnboarding();
   const { toast } = useToast();
+  const navigate = useNavigate();
+  const isMobile = useMediaQuery("(max-width: 768px)");
+
+  // State
   const [presentations, setPresentations] = useState<Presentation[]>([]);
   const [userVotes, setUserVotes] = useState<Record<string, number>>({});
+  const [userReservations, setUserReservations] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRoom, setSelectedRoom] = useState<string>('all');
+  const [judgeProgressFilter, setJudgeProgressFilter] = useState<'all' | 'judged' | 'unjudged'>('all');
   const [agendaView, setAgendaView] = useState<'list' | 'timeline' | 'focus'>(
-    // Default to 'timeline' for judge, otherwise 'list'
-    currentUser?.role === 'judge' ? 'timeline' : 'list'
+    (currentUser?.role === 'judge' || currentUser?.role === 'conference-chair' || currentUser?.role === 'technical-chair') ? 'timeline' : 'list'
   );
+  const [showSignatureOnboarding, setShowSignatureOnboarding] = useState(false);
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<string | null>(null);
   const [showCurrentEvents, setShowCurrentEvents] = useState(false);
   const [agendaItems, setAgendaItems] = useState<AgendaItem[]>([]);
-  const navigate = useNavigate();
   const [reserved, setReserved] = useState<Record<string, boolean>>(() => {
     // Try to load from localStorage for persistence
     const saved = localStorage.getItem('reservedSeats');
@@ -83,12 +92,28 @@ export function Dashboard() {
     loadAgendaItems();
     if (currentUser) {
       loadUserVotes();
-      // Redirect judge to timeline view on login
-      if (currentUser.role === 'judge') {
+      if (currentUser.role === 'judge' || currentUser.role === 'conference-chair' || currentUser.role === 'technical-chair') {
         setAgendaView('timeline');
       }
     }
   }, [currentUser]);
+
+  // Check for signature onboarding needs
+  useEffect(() => {
+    if (currentUser && needsSignatureOnboarding) {
+      setShowSignatureOnboarding(true);
+    }
+  }, [currentUser, needsSignatureOnboarding]);
+
+  const handleSignatureOnboardingComplete = () => {
+    setShowSignatureOnboarding(false);
+    toast({
+      title: "Signature Setup Complete!",
+      description: "Your digital signature is ready for certificate generation.",
+    });
+    // Reload user data to get updated signature status
+    window.location.reload();
+  };
 
   // Real-time update for current events - refresh every minute
   useEffect(() => {
@@ -179,7 +204,37 @@ export function Dashboard() {
         })
       );
 
-      setPresentations(presentationsWithVotes);
+      // Filter out absent presentations for attendees
+      let finalPresentations = presentationsWithVotes;
+      
+      if (currentUser?.role !== 'judge' && currentUser?.role !== 'conference-chair' && currentUser?.role !== 'technical-chair') {
+        // For attendees, filter out presentations that have been marked as absent by judges
+        const presentationsToShow = await Promise.all(
+          presentationsWithVotes.map(async (presentation) => {
+            try {
+              const absentVotesSnapshot = await getDocs(
+                query(
+                  collection(db, 'votes'), 
+                  where('presentationId', '==', presentation.id),
+                  where('role', '==', 'judge'),
+                  where('isAbsent', '==', true)
+                )
+              );
+              
+              // If any judge marked this presentation as absent, exclude it for attendees
+              return absentVotesSnapshot.docs.length === 0 ? presentation : null;
+            } catch (error) {
+              console.error(`Error checking absent status for presentation ${presentation.id}:`, error);
+              // On error, include the presentation (fail safe)
+              return presentation;
+            }
+          })
+        );
+        
+        finalPresentations = presentationsToShow.filter(p => p !== null) as typeof presentationsWithVotes;
+      }
+
+      setPresentations(finalPresentations as unknown as Presentation[]);
     } catch (error) {
       console.error('Error loading presentations:', error);
       toast({
@@ -230,9 +285,10 @@ export function Dashboard() {
       
       const votes: Record<string, number> = {};
       snapshot.docs.forEach(doc => {
-        const vote = doc.data() as Vote;
-        // Each user should only have one vote per presentation
-        votes[vote.presentationId] = vote.score;
+        const vote = doc.data();
+        // Handle both new format (totalScore) and old format (score)
+        const userScore = vote.totalScore || vote.score || 0;
+        votes[vote.presentationId] = userScore;
       });
       
       console.log(`User ${currentUser.id} has voted on ${Object.keys(votes).length} presentations`);
@@ -375,9 +431,9 @@ export function Dashboard() {
       return isCurrentEvent(presentation);
     }
 
-    // Only show presentations in assigned rooms for judges
+    // Only show presentations in assigned rooms for judges, conference chairs, and technical chairs
     if (
-      currentUser?.role === 'judge' &&
+      (currentUser?.role === 'judge' || currentUser?.role === 'conference-chair' || currentUser?.role === 'technical-chair') &&
       Array.isArray((currentUser as any).assignedRooms) &&
       (currentUser as any).assignedRooms.length > 0
     ) {
@@ -386,11 +442,43 @@ export function Dashboard() {
       }
     }
 
+    // Judge progress filter
+    if ((currentUser?.role === 'judge' || currentUser?.role === 'conference-chair' || currentUser?.role === 'technical-chair') && judgeProgressFilter !== 'all') {
+      const hasVoted = !!userVotes[presentation.id];
+      if (judgeProgressFilter === 'judged' && !hasVoted) {
+        return false;
+      }
+      if (judgeProgressFilter === 'unjudged' && hasVoted) {
+        return false;
+      }
+    }
+
     const matchesSearch = presentation.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       presentation.authors.some(author => author.toLowerCase().includes(searchTerm.toLowerCase()));
     const matchesRoom = selectedRoom === 'all' || presentation.room === selectedRoom;
     return matchesSearch && matchesRoom;
   });
+
+  // Calculate judge progress statistics
+  const judgeProgressStats = () => {
+    if (currentUser?.role !== 'judge' && currentUser?.role !== 'conference-chair' && currentUser?.role !== 'technical-chair') return null;
+    
+    let judgeRelevantPresentations = presentations;
+    
+    // Filter by assigned rooms if judge has room assignments
+    if (Array.isArray((currentUser as any).assignedRooms) && (currentUser as any).assignedRooms.length > 0) {
+      judgeRelevantPresentations = presentations.filter(p => 
+        (currentUser as any).assignedRooms.includes(p.room)
+      );
+    }
+    
+    const total = judgeRelevantPresentations.length;
+    const judged = judgeRelevantPresentations.filter(p => !!userVotes[p.id]).length;
+    const unjudged = total - judged;
+    const percentage = total > 0 ? Math.round((judged / total) * 100) : 0;
+    
+    return { total, judged, unjudged, percentage };
+  };
 
   const presentationsByRoom = ROOMS.reduce((acc, room) => {
     acc[room] = filteredPresentations.filter(p => p.room === room);
@@ -422,7 +510,7 @@ export function Dashboard() {
 
   // Filter ROOMS for judge to only show assigned rooms
   const visibleRooms =
-    currentUser?.role === 'judge' &&
+    (currentUser?.role === 'judge' || currentUser?.role === 'conference-chair' || currentUser?.role === 'technical-chair') &&
     Array.isArray((currentUser as any).assignedRooms) &&
     (currentUser as any).assignedRooms.length > 0
       ? ROOMS.filter(room => (currentUser as any).assignedRooms.includes(room))
@@ -454,6 +542,78 @@ export function Dashboard() {
       });
     }
   };
+
+  // Handle vote submission refresh
+  const handleVoteSubmitted = async () => {
+    try {
+      toast({
+        title: "Updating...",
+        description: "Refreshing presentation data...",
+      });
+      
+      // Refresh both presentations and user votes
+      await Promise.all([
+        loadPresentations(),
+        loadUserVotes()
+      ]);
+      
+      toast({
+        title: "Updated!",
+        description: "Your vote has been recorded and the display has been updated.",
+      });
+    } catch (error) {
+      console.error('Error refreshing data:', error);
+      toast({
+        title: "Warning",
+        description: "Vote submitted but display may not reflect changes immediately.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Block unverified attendees using firebaseUser
+  if (
+    currentUser &&
+    currentUser.role === 'spectator' &&
+    firebaseUser &&
+    firebaseUser.emailVerified === false
+  ) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-yellow-50">
+        <div className="max-w-md w-full bg-white rounded-lg shadow-lg p-8 text-center border border-yellow-200">
+          <h2 className="text-2xl font-bold text-yellow-800 mb-2">Email Verification Required</h2>
+          <p className="text-yellow-900 mb-4">
+            Please check your inbox for a verification link to activate your account.<br />
+            You must verify your email before you can access the ICTAS 2025 Conference system.
+          </p>
+          <p className="text-sm text-yellow-700 mb-4">
+            If you did not receive the email, check your spam folder or click below to resend the verification email.
+          </p>
+          <Button onClick={async () => {
+            try {
+              const user = (await import('firebase/auth')).getAuth().currentUser;
+              if (user) {
+                await (await import('firebase/auth')).sendEmailVerification(user);
+                toast({
+                  title: "Verification Email Sent",
+                  description: "Please check your inbox for the verification link.",
+                });
+              }
+            } catch (error: any) {
+              toast({
+                title: "Resend Failed",
+                description: error.message || "Could not resend verification email.",
+                variant: "destructive",
+              });
+            }
+          }}>
+            Resend Verification Email
+          </Button>
+          <div className="mt-6 text-xs text-gray-400">ICTAS 2025 Conference System</div>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     // Show skeleton cards instead of spinner
@@ -558,10 +718,9 @@ export function Dashboard() {
                   variant={agendaView === 'timeline' ? 'default' : 'outline'}
                   size="sm"
                   onClick={() => setAgendaView('timeline')}
-                  className="flex-1 sm:flex-initial"
+                  className="flex items-center"
                 >
-                  <Calendar className="h-4 w-4 mr-1" />
-                  Timeline
+                  Presentations
                 </Button>
                 <Button
                   variant={agendaView === 'focus' || agendaView === 'list' ? 'default' : 'outline'}
@@ -623,31 +782,157 @@ export function Dashboard() {
           </CardContent>
         </Card>
 
-        {/* Voting Statistics - Make responsive */}
-        {currentUser && (
-          <Card className="mb-4 sm:mb-6 bg-gradient-to-r from-primary/5 to-accent/5 w-full rounded-none border-0 shadow-none min-w-0">
-            <CardContent className="p-0 px-2 sm:px-8 py-6">
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-2 min-w-0">
-                <div className="flex items-center">
+        {/* Enhanced Judge Progress Statistics */}
+        {currentUser && (currentUser.role === 'judge' || currentUser.role === 'conference-chair' || currentUser.role === 'technical-chair') && (
+          <Card className="mb-4 sm:mb-6 bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200 w-full rounded-lg shadow-sm">
+            <CardContent className="p-4 sm:p-6">
+              <div className="flex flex-col gap-4">
+                <div className="flex items-center justify-between">
                   <div className="flex items-center">
-                    {currentUser.role === 'judge' ? (
-                      <Trophy className="h-5 w-5 text-primary mr-2" />
-                    ) : (
-                      <ThumbsUp className="h-5 w-5 text-accent mr-2" />
-                    )}
+                    <Trophy className="h-5 w-5 text-amber-600 mr-2" />
                     <div>
-                      <p className="font-medium">Your Voting Progress</p>
-                      <p className="text-sm text-muted-foreground">
-                        {Object.keys(userVotes).length} of {presentations.length} presentations {currentUser.role === 'judge' ? 'scored' : 'liked'}
+                      <p className="font-medium text-amber-900">Judge Progress Overview</p>
+                      <p className="text-sm text-amber-700">
+                        {judgeProgressStats()?.judged} of {judgeProgressStats()?.total} presentations scored
                       </p>
                     </div>
                   </div>
+                  <div className="text-right">
+                    <div className="text-2xl font-bold text-amber-800">
+                      {judgeProgressStats()?.percentage}%
+                    </div>
+                    <p className="text-sm text-amber-600">Complete</p>
+                  </div>
+                </div>
+                
+                {/* Progress breakdown */}
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="text-center">
+                    <div className="flex items-center justify-center mb-1">
+                      <CheckCircle2 className="h-4 w-4 text-green-600 mr-1" />
+                      <span className="text-lg font-bold text-green-700">
+                        {judgeProgressStats()?.judged}
+                      </span>
+                    </div>
+                    <p className="text-xs text-green-600">Judged</p>
+                  </div>
+                  <div className="text-center">
+                    <div className="flex items-center justify-center mb-1">
+                      <Circle className="h-4 w-4 text-orange-600 mr-1" />
+                      <span className="text-lg font-bold text-orange-700">
+                        {judgeProgressStats()?.unjudged}
+                      </span>
+                    </div>
+                    <p className="text-xs text-orange-600">Remaining</p>
+                  </div>
+                  <div className="text-center">
+                    <div className="flex items-center justify-center mb-1">
+                      <AlertCircle className="h-4 w-4 text-blue-600 mr-1" />
+                      <span className="text-lg font-bold text-blue-700">
+                        {judgeProgressStats()?.total}
+                      </span>
+                    </div>
+                    <p className="text-xs text-blue-600">Total</p>
+                  </div>
+                </div>
+
+                {/* Filter buttons for judges */}
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant={judgeProgressFilter === 'all' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setJudgeProgressFilter('all')}
+                    className="text-xs"
+                  >
+                    All Presentations
+                  </Button>
+                  <Button
+                    variant={judgeProgressFilter === 'unjudged' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setJudgeProgressFilter('unjudged')}
+                    className="text-xs"
+                  >
+                    <Circle className="h-3 w-3 mr-1" />
+                    Need to Judge ({judgeProgressStats()?.unjudged})
+                  </Button>
+                  <Button
+                    variant={judgeProgressFilter === 'judged' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setJudgeProgressFilter('judged')}
+                    className="text-xs"
+                  >
+                    <CheckCircle2 className="h-3 w-3 mr-1" />
+                    Already Judged ({judgeProgressStats()?.judged})
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Regular Voting Progress for Non-Judges */}
+        {currentUser && currentUser.role !== 'judge' && (
+          <Card className="mb-4 sm:mb-6 bg-gradient-to-r from-gray-50 to-blue-50 border-gray-200 w-full rounded-lg shadow-sm">
+            <CardContent className="p-4 sm:p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-1">
+                    Your Rating Progress
+                  </h3>
+                  <p className="text-sm text-gray-600">
+                    You have rated {Object.keys(userVotes).length} out of {presentations.length} presentations
+                  </p>
                 </div>
                 <div className="text-right">
-                  <div className="text-2xl font-bold text-primary">
-                    {Math.round((Object.keys(userVotes).length / Math.max(presentations.length, 1)) * 100)}%
+                  <div className="text-2xl font-bold text-blue-600">
+                    {Object.keys(userVotes).length}
                   </div>
-                  <p className="text-sm text-muted-foreground">Complete</p>
+                  <div className="text-sm text-gray-500">rated</div>
+                </div>
+              </div>
+              
+              <div className="mt-3">
+                <div className="bg-gray-200 rounded-full h-2">
+                  <div 
+                    className="bg-blue-500 h-2 rounded-full transition-all duration-300 ease-out"
+                    style={{ 
+                      width: `${presentations.length > 0 ? (Object.keys(userVotes).length / presentations.length) * 100 : 0}%` 
+                    }}
+                  ></div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Attendee Instructions */}
+        {currentUser && currentUser.role === 'spectator' && (
+          <Card className="mb-4 sm:mb-6 bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200 w-full rounded-lg shadow-sm">
+            <CardContent className="p-4 sm:p-6">
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0 mt-1">
+                  <Star className="h-5 w-5 text-blue-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-base sm:text-lg font-semibold text-blue-900 mb-2">
+                    Welcome, Attendee! 
+                  </h3>
+                  <div className="text-sm text-blue-800 space-y-1">
+                    <p>As an attendee, you can rate presentations you attended using our structured rating system.</p>
+                    <p>Click "Rate Presentation" on any presentation to provide your detailed feedback across multiple criteria.</p>
+                    <p>Your ratings help provide valuable attendee perspective alongside judge evaluations.</p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="mt-4 flex flex-wrap items-center gap-4 text-xs text-blue-700">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
+                  <span>Rate presentations 1-5 on multiple criteria</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 bg-indigo-400 rounded-full"></div>
+                  <span>Your feedback matters to the community</span>
                 </div>
               </div>
             </CardContent>
@@ -698,12 +983,14 @@ export function Dashboard() {
                       hasVoted={!!userVotes[presentation.id]}
                       reserved={!!reserved[presentation.id]}
                       onReserve={() => handleReserve(presentation.id)}
+                      onVoteSubmitted={handleVoteSubmitted}
                     />
                   ))}
                 </div>
               )}
             </TabsContent>
 
+            {/* Room-based tabs */}
             {visibleRooms.map(room => (
               <TabsContent key={room} value={room} className="space-y-4 w-full px-2 sm:px-8 min-w-0">
                 <div className="grid gap-4">
@@ -715,6 +1002,7 @@ export function Dashboard() {
                       hasVoted={!!userVotes[presentation.id]}
                       reserved={!!reserved[presentation.id]}
                       onReserve={() => handleReserve(presentation.id)}
+                      onVoteSubmitted={handleVoteSubmitted}
                     />
                   ))}
                 </div>
@@ -1005,6 +1293,14 @@ export function Dashboard() {
           </Button>
         </div>
       </div>
+
+      {/* Signature Onboarding Modal */}
+      {showSignatureOnboarding && currentUser && (
+        <SignatureOnboarding 
+          isOpen={showSignatureOnboarding}
+          onComplete={handleSignatureOnboardingComplete} 
+        />
+      )}
     </div>
   );
 }

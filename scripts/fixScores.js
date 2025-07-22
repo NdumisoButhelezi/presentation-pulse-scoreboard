@@ -12,13 +12,20 @@ import {
 
 // Firebase configuration - must match your app config
 const firebaseConfig = {
-  apiKey: "AIzaSyDkqha2lfDvtuFhDhTR84SzauPtOlQRnbE",
-  authDomain: "presentscore-5068b.firebaseapp.com",
-  projectId: "presentscore-5068b",
-  storageBucket: "presentscore-5068b.firebasestorage.app",
-  messagingSenderId: "54064814647",
-  appId: "1:54064814647:web:b6a89104282f466c627db2",
+  apiKey: process.env.VITE_FIREBASE_API_KEY,
+  authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.VITE_FIREBASE_APP_ID,
 };
+
+// Validate config
+for (const [key, value] of Object.entries(firebaseConfig)) {
+  if (!value) {
+    throw new Error(`Missing Firebase config value for: ${key}`);
+  }
+}
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
