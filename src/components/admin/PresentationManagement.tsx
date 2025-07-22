@@ -543,7 +543,7 @@ export function PresentationManagement({ searchTerm = '' }: PresentationManageme
           ) : (
             <div className="space-y-4">
               {filteredPresentations.map((presentation) => (
-                <div key={presentation.id} className="border rounded-lg p-4 space-y-3">
+                <div key={presentation.id} className="border rounded-lg p-4 sm:p-6 space-y-3">
                   <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                     <div className="flex-1 min-w-0">
                       <h3 className="font-semibold text-lg truncate">{presentation.title}</h3>
@@ -558,11 +558,12 @@ export function PresentationManagement({ searchTerm = '' }: PresentationManageme
                       )}
                     </div>
                     
-                    <div className="flex flex-col sm:flex-row gap-2">
+                    <div className="flex flex-col sm:flex-row gap-2 sm:gap-4 items-stretch sm:items-center justify-end">
                       <Button
                         size="sm"
                         variant="outline"
                         onClick={() => handleEdit(presentation)}
+                        className="min-w-[80px]"
                       >
                         <Edit className="h-4 w-4 mr-1" />
                         <span className="hidden sm:inline">Edit</span>
@@ -572,6 +573,7 @@ export function PresentationManagement({ searchTerm = '' }: PresentationManageme
                         variant="destructive"
                         onClick={() => handleDelete(presentation.id)}
                         disabled={deleting === presentation.id}
+                        className="min-w-[80px]"
                       >
                         {deleting === presentation.id ? (
                           <RefreshCw className="h-4 w-4 animate-spin" />
