@@ -542,23 +542,18 @@ export async function generateQRCodesForAllPresentations(): Promise<void> {
     const snapshot = await getDocs(presentationsRef);
     
     const updatePromises = snapshot.docs.map(async (docRef) => {
-      const data = docRef.data();
-      
-      // Only generate QR code if it doesn't exist
-      if (!data.qrCode || !data.qrCodeUrl) {
-        try {
-          await generateQRCodeForPresentation(docRef.id);
-          console.log(`Generated QR code for presentation: ${data.title}`);
-        } catch (error) {
-          console.error(`Failed to generate QR code for presentation ${docRef.id}:`, error);
-        }
+      try {
+        await generateQRCodeForPresentation(docRef.id); // Always regenerate
+        console.log(`Regenerated QR code for presentation: ${docRef.data().title}`);
+      } catch (error) {
+        console.error(`Failed to regenerate QR code for presentation ${docRef.id}:`, error);
       }
     });
     
     await Promise.all(updatePromises);
-    console.log("Finished generating QR codes for all presentations");
+    console.log("Finished regenerating QR codes for all presentations");
   } catch (error) {
-    console.error("Error generating QR codes for all presentations:", error);
+    console.error("Error regenerating QR codes for all presentations:", error);
     throw error;
   }
 }
