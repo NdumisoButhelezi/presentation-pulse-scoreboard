@@ -11,6 +11,7 @@ import { getJudgeTotal } from '@/lib/scores';
 import { ScoreDisplay } from '@/components/ui/score-display';
 import { ensurePresentationHasQRCode } from '@/lib/firebase';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { getPresentationRatingUrl } from '@/lib/qrcode';
 
 interface PresentationCardProps {
   presentation: Presentation;
@@ -361,7 +362,7 @@ export function PresentationCard({ presentation, userVote, hasVoted, reserved, o
               <div className="text-center">
                 <p className="text-xs text-muted-foreground mb-2">Direct link:</p>
                 <code className="text-xs bg-gray-100 px-2 py-1 rounded break-all">
-                  {presentation.qrCodeUrl}
+                  {getPresentationRatingUrl(presentation.id)}
                 </code>
               </div>
             )}
