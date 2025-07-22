@@ -135,14 +135,22 @@ export function CertificateManagement() {
       const chairUsers = usersSnapshot.docs
         .map(doc => ({ id: doc.id, ...doc.data() }))
         .filter(u => (u as any).signature && (u as any).signature.data);
+      // After filtering chairUsers, sort so technical chair is first (left), conference chair is second (right)
+      const sortedChairUsers = [...chairUsers].sort((a, b) => {
+        const roleA = (a as any).role;
+        const roleB = (b as any).role;
+        if (roleA === 'technical-chair') return -1;
+        if (roleB === 'technical-chair') return 1;
+        return 0;
+      });
       // Draw signatures (up to 2, left and right)
       const sigY = 170; // was 220, move down by 50px
       const sigWidth = 120;
       const sigHeight = 48;
       const sigSpacing = 80;
       const startX = page.getWidth() / 2 - (chairUsers.length === 2 ? sigWidth + sigSpacing/2 : sigWidth/2);
-      chairUsers.forEach((user, idx) => {
-        const x = startX + idx * (sigWidth + sigSpacing);
+      sortedChairUsers.forEach((user, idx) => {
+        const x = startX + idx * (sigWidth + sigSpacing) - 50; // move left by 50px
         // Draw signature image
         pdfDoc.embedPng((user as any).signature.data).then(sigImg => {
           page.drawImage(sigImg, {
@@ -152,21 +160,7 @@ export function CertificateManagement() {
             height: sigHeight,
             opacity: 0.6, // 60% transparent
           });
-          // Draw name and role below signature
-          page.drawText((user as any).name, {
-            x: x,
-            y: sigY - 18,
-            size: 10,
-            font,
-            color: rgb(0,0,0),
-          });
-          page.drawText((user as any).role.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase()), {
-            x: x,
-            y: sigY - 32,
-            size: 9,
-            font,
-            color: rgb(0.2,0.2,0.2),
-          });
+          // Do NOT draw name and role below signature
         });
       });
       // Save and download
