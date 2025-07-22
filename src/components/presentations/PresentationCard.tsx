@@ -271,7 +271,7 @@ export function PresentationCard({ presentation, userVote, hasVoted, reserved, o
             </Button>
             
             {/* QR Code Button */}
-            <Button
+            {/* <Button
               variant="ghost"
               size="sm"
               onClick={handleShowQRCode}
@@ -279,7 +279,7 @@ export function PresentationCard({ presentation, userVote, hasVoted, reserved, o
               disabled={qrCodeLoading}
             >
               <QrCode className="h-4 w-4" />
-            </Button>
+            </Button> */}
           </div>
         </div>
       </CardContent>
@@ -306,7 +306,7 @@ export function PresentationCard({ presentation, userVote, hasVoted, reserved, o
       )}
       
       {/* QR Code Modal */}
-      <Dialog open={showQRCode} onOpenChange={setShowQRCode}>
+      {/* <Dialog open={showQRCode} onOpenChange={setShowQRCode}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center">
@@ -368,7 +368,7 @@ export function PresentationCard({ presentation, userVote, hasVoted, reserved, o
             )}
           </div>
         </DialogContent>
-      </Dialog>
+      </Dialog> */}
       
       <VoteModal
         presentation={presentation}
