@@ -523,7 +523,7 @@ export async function generateQRCodeForPresentation(presentationId: string): Pro
     const qrCode = await generatePresentationQRCode(presentationId, title);
     
     // Update the presentation with QR code info
-    await updateDoc(presentationRef, {
+          await updateDoc(presentationRef, {
       qrCode,
       qrCodeUrl,
       updatedAt: new Date()

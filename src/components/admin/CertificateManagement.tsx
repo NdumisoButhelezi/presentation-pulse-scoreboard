@@ -116,19 +116,23 @@ export function CertificateManagement() {
         color: rgb(0, 0, 0),
       });
       // Paper title (move left by 58px total to start at left margin)
-      const maxTitleWidth = page.getWidth() - 2 * 140;
+      const leftMargin = 140;
+      const rightMargin = 180;
+      const maxTitleWidth = page.getWidth() - leftMargin - rightMargin;
       const titleFontSize = 15.9;
       const titleLines = wrapText(title, font, titleFontSize, maxTitleWidth);
       let titleY = pageHeight - 325;
       for (const line of titleLines) {
+        const lineWidth = font.widthOfTextAtSize(line, titleFontSize);
+        const x = leftMargin + (maxTitleWidth - lineWidth) / 2-30;
         page.drawText(line, {
-          x: centerX(line, titleFontSize) - 58,
+          x,
           y: titleY,
           size: titleFontSize,
           font,
           color: rgb(215/255, 182/255, 128/255), // #d7b680
         });
-        titleY -= 22;
+        titleY -= 26; // 22 + 4px gap for readability
       }
       // Fetch technical chair and conference chair users with signatures
       const usersSnapshot = await getDocs(query(collection(db, 'users'), where('role', 'in', ['conference-chair', 'technical-chair'])));
