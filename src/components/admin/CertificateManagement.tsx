@@ -93,7 +93,6 @@ export function CertificateManagement() {
       // Try to embed Calibri (MS) font if available, fallback to Helvetica
       let font;
       try {
-        // pdf-lib does not include Calibri by default, so fallback to Helvetica
         font = await pdfDoc.embedFont(StandardFonts.Helvetica);
       } catch {
         font = await pdfDoc.embedFont(StandardFonts.Helvetica);
@@ -131,7 +130,46 @@ export function CertificateManagement() {
         });
         titleY -= 22;
       }
-      // TODO: Draw judge and chair signatures
+      // Fetch technical chair and conference chair users with signatures
+      const usersSnapshot = await getDocs(query(collection(db, 'users'), where('role', 'in', ['conference-chair', 'technical-chair'])));
+      const chairUsers = usersSnapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .filter(u => (u as any).signature && (u as any).signature.data);
+      // Draw signatures (up to 2, left and right)
+      const sigY = 170; // was 220, move down by 50px
+      const sigWidth = 120;
+      const sigHeight = 48;
+      const sigSpacing = 80;
+      const startX = page.getWidth() / 2 - (chairUsers.length === 2 ? sigWidth + sigSpacing/2 : sigWidth/2);
+      chairUsers.forEach((user, idx) => {
+        const x = startX + idx * (sigWidth + sigSpacing);
+        // Draw signature image
+        pdfDoc.embedPng((user as any).signature.data).then(sigImg => {
+          page.drawImage(sigImg, {
+            x,
+            y: sigY,
+            width: sigWidth,
+            height: sigHeight,
+            opacity: 0.6, // 60% transparent
+          });
+          // Draw name and role below signature
+          page.drawText((user as any).name, {
+            x: x,
+            y: sigY - 18,
+            size: 10,
+            font,
+            color: rgb(0,0,0),
+          });
+          page.drawText((user as any).role.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase()), {
+            x: x,
+            y: sigY - 32,
+            size: 9,
+            font,
+            color: rgb(0.2,0.2,0.2),
+          });
+        });
+      });
+      // Save and download
       const pdfBytes = await pdfDoc.save();
       const blob = new Blob([pdfBytes], { type: 'application/pdf' });
       const url = URL.createObjectURL(blob);
