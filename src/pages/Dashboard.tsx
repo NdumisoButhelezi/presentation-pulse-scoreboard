@@ -19,6 +19,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { SignatureOnboarding } from '@/components/auth/SignatureOnboarding';
 import { useSignatureOnboarding } from '@/hooks/use-signature-onboarding';
 import { useMediaQuery } from '@/hooks/use-media-query';
+import { getAssignmentsForJudge } from '@/lib/firebase';
 
 // Add agenda item types
 interface AgendaItem {
@@ -60,6 +61,7 @@ export function Dashboard() {
     const saved = localStorage.getItem('reservedSeats');
     return saved ? JSON.parse(saved) : {};
   });
+  const [assignedPresentationIds, setAssignedPresentationIds] = useState<string[] | null>(null);
 
   // Save reserved seats to localStorage on change
   useEffect(() => {
@@ -94,6 +96,12 @@ export function Dashboard() {
       loadUserVotes();
       if (currentUser.role === 'judge' || currentUser.role === 'conference-chair' || currentUser.role === 'technical-chair') {
         setAgendaView('timeline');
+        // Fetch assigned presentations for judges
+        getAssignmentsForJudge(currentUser.id).then(assignments => {
+          setAssignedPresentationIds(assignments.map(a => a.presentationId));
+        });
+      } else {
+        setAssignedPresentationIds(null);
       }
     }
   }, [currentUser]);
@@ -430,7 +438,15 @@ export function Dashboard() {
     if (showCurrentEvents) {
       return isCurrentEvent(presentation);
     }
-
+    // Only show presentations assigned to this judge
+    if (
+      (currentUser?.role === 'judge' || currentUser?.role === 'conference-chair' || currentUser?.role === 'technical-chair') &&
+      Array.isArray(assignedPresentationIds)
+    ) {
+      if (!assignedPresentationIds.includes(presentation.id)) {
+        return false;
+      }
+    }
     // Only show presentations in assigned rooms for judges, conference chairs, and technical chairs
     if (
       (currentUser?.role === 'judge' || currentUser?.role === 'conference-chair' || currentUser?.role === 'technical-chair') &&
@@ -464,19 +480,18 @@ export function Dashboard() {
     if (currentUser?.role !== 'judge' && currentUser?.role !== 'conference-chair' && currentUser?.role !== 'technical-chair') return null;
     
     let judgeRelevantPresentations = presentations;
-    
-    // Filter by assigned rooms if judge has room assignments
-    if (Array.isArray((currentUser as any).assignedRooms) && (currentUser as any).assignedRooms.length > 0) {
+    // Filter by assigned presentations if available
+    if (Array.isArray(assignedPresentationIds)) {
+      judgeRelevantPresentations = presentations.filter(p => assignedPresentationIds.includes(p.id));
+    } else if (Array.isArray((currentUser as any).assignedRooms) && (currentUser as any).assignedRooms.length > 0) {
       judgeRelevantPresentations = presentations.filter(p => 
         (currentUser as any).assignedRooms.includes(p.room)
       );
     }
-    
     const total = judgeRelevantPresentations.length;
     const judged = judgeRelevantPresentations.filter(p => !!userVotes[p.id]).length;
     const unjudged = total - judged;
     const percentage = total > 0 ? Math.round((judged / total) * 100) : 0;
-    
     return { total, judged, unjudged, percentage };
   };
 
