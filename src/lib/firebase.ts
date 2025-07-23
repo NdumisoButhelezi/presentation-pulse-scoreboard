@@ -27,6 +27,7 @@ import { getAnalytics } from "firebase/analytics";
 import { DEFAULT_SCORING_CATEGORIES } from './scoringConfig';
 import { SpectatorQuestion } from '@/types';
 import { generatePresentationQRCode, getPresentationRatingUrl } from './qrcode';
+import { JudgePresentationAssignment } from '@/types';
 
 // Firebase configuration
 const firebaseConfig = {
@@ -367,6 +368,40 @@ export const cleanupDuplicateVotes = async () => {
   }
 };
 
+// Utility function to delete all votes from the 'votes' collection
+export const deleteAllVotes = async () => {
+  try {
+    const votesSnapshot = await getDocs(collection(db, 'votes'));
+    const deletePromises = votesSnapshot.docs.map((docSnap) => deleteDoc(doc(db, 'votes', docSnap.id)));
+    await Promise.all(deletePromises);
+    console.log(`Deleted ${deletePromises.length} votes from the database.`);
+    return deletePromises.length;
+  } catch (error) {
+    console.error('Error deleting all votes:', error);
+    throw error;
+  }
+};
+
+// Utility function to reset all judge and spectator score fields in all presentations
+export const resetAllPresentationScores = async () => {
+  try {
+    const presentationsSnapshot = await getDocs(collection(db, 'presentations'));
+    const updatePromises = presentationsSnapshot.docs.map((docSnap) =>
+      updateDoc(doc(db, 'presentations', docSnap.id), {
+        judgeScores: [],
+        judgeTotal: 0,
+        spectatorLikes: 0,
+      })
+    );
+    await Promise.all(updatePromises);
+    console.log(`Reset scores for ${updatePromises.length} presentations.`);
+    return updatePromises.length;
+  } catch (error) {
+    console.error('Error resetting presentation scores:', error);
+    throw error;
+  }
+};
+
 // Utility function to check for existing votes before creating new ones
 export const checkExistingVote = async (userId: string, presentationId: string) => {
   try {
@@ -577,4 +612,31 @@ export async function ensurePresentationHasQRCode(presentationId: string): Promi
     console.error("Error ensuring presentation has QR code:", error);
     throw error;
   }
+}
+
+// Per-judge, per-presentation assignment utilities
+export async function createJudgePresentationAssignment(assignment: Omit<JudgePresentationAssignment, 'id'>): Promise<string> {
+  const ref = await addDoc(collection(db, 'judgePresentationAssignments'), assignment);
+  return ref.id;
+}
+
+export async function deleteJudgePresentationAssignment(assignmentId: string): Promise<void> {
+  await deleteDoc(doc(db, 'judgePresentationAssignments', assignmentId));
+}
+
+export async function getAssignmentsForJudge(judgeId: string): Promise<JudgePresentationAssignment[]> {
+  const q = query(collection(db, 'judgePresentationAssignments'), where('judgeId', '==', judgeId));
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as JudgePresentationAssignment[];
+}
+
+export async function getAssignmentsForPresentation(presentationId: string): Promise<JudgePresentationAssignment[]> {
+  const q = query(collection(db, 'judgePresentationAssignments'), where('presentationId', '==', presentationId));
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as JudgePresentationAssignment[];
+}
+
+export async function getAllJudgePresentationAssignments(): Promise<JudgePresentationAssignment[]> {
+  const snapshot = await getDocs(collection(db, 'judgePresentationAssignments'));
+  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as JudgePresentationAssignment[];
 }
