@@ -106,3 +106,12 @@ export interface SpectatorVote {
   timestamp: Date;
   attended?: boolean; // Whether they actually attended the presentation
 }
+
+// New: Per-judge, per-presentation assignment model
+export interface JudgePresentationAssignment {
+  id?: string; // Firestore doc id
+  judgeId: string;
+  presentationId: string;
+  assignedAt: Date;
+  assignedBy: string; // Admin user id
+}

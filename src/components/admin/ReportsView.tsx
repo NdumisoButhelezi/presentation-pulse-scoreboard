@@ -7,8 +7,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts';
 import { Presentation, Vote, ROOMS, SpectatorQuestion, SpectatorVote } from '@/types';
 import { collection, getDocs } from 'firebase/firestore';
-import { db, getSpectatorQuestions } from '@/lib/firebase';
-import { BarChart3, PieChart as PieChartIcon, Download, Users, Trophy, TrendingUp, RefreshCw, Filter, FileText, Star, ThumbsUp, HelpCircle, AlertCircle } from 'lucide-react';
+import { db, getSpectatorQuestions, deleteAllVotes, resetAllPresentationScores } from '@/lib/firebase';
+import { BarChart3, PieChart as PieChartIcon, Download, Users, Trophy, TrendingUp, RefreshCw, Filter, FileText, Star, ThumbsUp, HelpCircle, AlertCircle, Trash2 } from 'lucide-react';
 import { ScoreDisplay, ScoreTableCell } from '@/components/ui/score-display';
 import { processTableData, getJudgeTotal, calculateSpectatorTotal, getSpectatorAverageByQuestion } from '@/lib/scores';
 
@@ -79,6 +79,8 @@ export function ReportsView({ searchTerm = '' }: ReportsViewProps) {
   const [generating, setGenerating] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [filterRoom, setFilterRoom] = useState<string>('all');
+  const [deletingVotes, setDeletingVotes] = useState(false);
+  const [resettingScores, setResettingScores] = useState(false);
 
   useEffect(() => {
     loadReportData();
@@ -377,6 +379,36 @@ export function ReportsView({ searchTerm = '' }: ReportsViewProps) {
     }
   };
 
+  const handleDeleteAllVotes = async () => {
+    if (!window.confirm('Are you sure you want to delete ALL judge and spectator votes? This action cannot be undone.')) return;
+    setDeletingVotes(true);
+    try {
+      await deleteAllVotes();
+      alert('All votes have been deleted.');
+      loadReportData();
+    } catch (error) {
+      alert('Error deleting votes. Check console for details.');
+      console.error(error);
+    } finally {
+      setDeletingVotes(false);
+    }
+  };
+
+  const handleResetAllScores = async () => {
+    if (!window.confirm('Are you sure you want to reset ALL judge and spectator scores for all presentations? This action cannot be undone.')) return;
+    setResettingScores(true);
+    try {
+      await resetAllPresentationScores();
+      alert('All presentation scores have been reset.');
+      loadReportData();
+    } catch (error) {
+      alert('Error resetting scores. Check console for details.');
+      console.error(error);
+    } finally {
+      setResettingScores(false);
+    }
+  };
+
   // Filter leaderboard based on search term and room filter
   const filteredLeaderboard = reportData?.leaderboard.filter(item => {
     const matchesSearch = !searchTerm || 
@@ -456,6 +488,42 @@ export function ReportsView({ searchTerm = '' }: ReportsViewProps) {
                 <Download className="h-4 w-4 mr-2" />
                 <span className="hidden sm:inline">Export Data</span>
                 <span className="sm:hidden">Export</span>
+              </>
+            )}
+          </Button>
+          <Button
+            onClick={handleDeleteAllVotes}
+            disabled={deletingVotes}
+            variant="destructive"
+            className="w-full sm:w-auto"
+          >
+            {deletingVotes ? (
+              <>
+                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                Deleting Votes...
+              </>
+            ) : (
+              <>
+                <Trash2 className="h-4 w-4 mr-2" />
+                Delete All Votes
+              </>
+            )}
+          </Button>
+          <Button
+            onClick={handleResetAllScores}
+            disabled={resettingScores}
+            variant="destructive"
+            className="w-full sm:w-auto"
+          >
+            {resettingScores ? (
+              <>
+                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                Reset Scores...
+              </>
+            ) : (
+              <>
+                <Trash2 className="h-4 w-4 mr-2" />
+                Reset All Scores
               </>
             )}
           </Button>
