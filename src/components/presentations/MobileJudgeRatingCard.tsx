@@ -32,7 +32,8 @@ export function MobileJudgeRatingCard({
           {currentRating}/5
         </span>
       </div>
-      
+      {/* Show the description/question above the stars */}
+      <p className="text-xs text-muted-foreground mb-2">{category.description}</p>
       <div className="flex flex-col items-center pt-2 space-y-2">
         <Rating 
           value={currentRating} 

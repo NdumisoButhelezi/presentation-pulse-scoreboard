@@ -12,6 +12,7 @@ import { Clock, RefreshCw, Download, Filter, Search, AlertCircle, TrendingUp, Ch
 import { useToast } from '@/hooks/use-toast';
 import React from 'react'; // Added for React.Fragment
 import { User } from '@/types';
+import { DEFAULT_SCORING_CATEGORIES } from '@/lib/scoringConfig';
 
 interface VoteAuditEntry {
   id: string;
@@ -435,7 +436,8 @@ export function VoteAuditView({ searchTerm = '' }: VoteAuditViewProps) {
                     const isExpanded = expandedVotes.has(vote.id);
                     const history = getHistoryFromVote(vote);
                     const hasMultipleEntries = history.length > 1;
-                    
+                    // Get latest ratings (from main vote object)
+                    const latestRatings = vote.ratings;
                     return (
                       <React.Fragment key={vote.id}>
                         <TableRow className={vote.isUpdate ? "bg-yellow-50" : ""}>
@@ -466,7 +468,29 @@ export function VoteAuditView({ searchTerm = '' }: VoteAuditViewProps) {
                             </Badge>
                           </TableCell>
                           <TableCell>
-                            <span className="font-bold text-lg">{vote.totalScore}</span>
+                            <div className="flex flex-col gap-1">
+                              <span className="font-bold">{vote.totalScore}</span>
+                              {/* Per-question ratings always visible for judges */}
+                              {vote.role === 'judge' && latestRatings && Array.isArray(latestRatings) && latestRatings.length > 0 && (
+                                <div className="mt-1 p-1 bg-white rounded border">
+                                  <div className="grid grid-cols-2 md:grid-cols-3 gap-1">
+                                    {latestRatings.map((rating: any, idx: number) => {
+                                      const category = DEFAULT_SCORING_CATEGORIES.find(cat => cat.id === rating.categoryId);
+                                      return (
+                                        <div key={idx} className="flex items-center justify-between p-1 bg-gray-50 rounded text-xs">
+                                          <span className="font-medium text-gray-700">
+                                            {category ? category.name : rating.categoryId}:
+                                          </span>
+                                          <Badge variant="secondary" className="text-xs">
+                                            {rating.score}
+                                          </Badge>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
                           </TableCell>
                           <TableCell className="text-sm">
                             <div className="flex items-center gap-1">
