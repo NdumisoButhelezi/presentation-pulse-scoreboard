@@ -77,15 +77,31 @@ export function calculateFinalScore(presentation: any): number {
 
 /**
  * Get total judge score (not average)
+ * Supports both legacy (array of numbers) and new (array of objects) formats
  */
 export function getJudgeTotal(presentation: any): number {
   if (typeof presentation.judgeTotal === 'number') {
     return presentation.judgeTotal;
   }
-  
-  return presentation.judgeScores?.length 
-    ? presentation.judgeScores.reduce((sum: number, score: number) => sum + score, 0)
-    : 0;
+  if (!presentation.judgeScores || !Array.isArray(presentation.judgeScores) || presentation.judgeScores.length === 0) {
+    return 0;
+  }
+  // If array of numbers (legacy)
+  if (typeof presentation.judgeScores[0] === 'number') {
+    return presentation.judgeScores.reduce((sum: number, score: number) => sum + score, 0);
+  }
+  // If array of objects (new)
+  return presentation.judgeScores.reduce((sum: number, rating: any) => {
+    // If this is a JudgeVote object with totalScore
+    if (typeof rating.totalScore === 'number') return sum + rating.totalScore;
+    // If this is a JudgeRating[] (array of category ratings)
+    if (Array.isArray(rating.ratings)) {
+      return sum + rating.ratings.reduce((catSum: number, cat: any) => catSum + (cat.score || 0), 0);
+    }
+    // If this is a single JudgeRating object
+    if (typeof rating.score === 'number') return sum + rating.score;
+    return sum;
+  }, 0);
 }
 
 /**

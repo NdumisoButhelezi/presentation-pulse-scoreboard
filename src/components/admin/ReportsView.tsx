@@ -112,25 +112,25 @@ export function ReportsView({ searchTerm = '' }: ReportsViewProps) {
 
       // Calculate enhanced leaderboard with spectator ratings
       const leaderboard = presentations.map(presentation => {
-        const judgeTotal = getJudgeTotal(presentation);
-        
+        // Aggregate judge votes for this presentation
+        const judgeVotes = votes.filter(vote => vote.presentationId === presentation.id && vote.role === 'judge');
+        const judgeTotal = judgeVotes.reduce((sum, vote) => {
+          if (typeof vote.totalScore === 'number') return sum + vote.totalScore;
+          if (Array.isArray(vote.ratings)) {
+            return sum + vote.ratings.reduce((catSum, cat) => catSum + (cat.score || 0), 0);
+          }
+          if (typeof vote.score === 'number') return sum + vote.score;
+          return sum;
+        }, 0);
         // Calculate spectator total from new rating system
         const presentationSpectatorVotes = spectatorVotes.filter(vote => vote.presentationId === presentation.id);
         const spectatorTotal = calculateSpectatorTotal(presentationSpectatorVotes);
-        
         // Check if any judge marked this presentation as absent
-        const absentVotes = votes.filter(vote => 
-          vote.presentationId === presentation.id && 
-          vote.role === 'judge' && 
-          vote.isAbsent === true
-        );
+        const absentVotes = judgeVotes.filter(vote => vote.isAbsent === true);
         const isAbsent = absentVotes.length > 0;
-        
         // Keep backward compatibility with simple likes
         const spectatorLikes = presentation.spectatorLikes || 0;
-        
         const finalScore = judgeTotal; // Judge score remains primary
-
         return {
           presentation,
           judgeTotal,
@@ -686,19 +686,16 @@ export function ReportsView({ searchTerm = '' }: ReportsViewProps) {
                           )}
                         </div>
                         
-                        <div className="flex flex-col gap-2">
-                          <div className="text-right">
-                            <p className="text-sm font-medium">Judge Total</p>
-                            <p className="text-lg font-bold text-primary">{item.judgeTotal}</p>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-sm font-medium">Spectator Rating Total</p>
-                            <p className="text-lg font-bold text-green-600">{item.spectatorTotal}</p>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-sm font-medium">Legacy Likes</p>
-                            <p className="text-lg font-bold text-blue-600">{item.spectatorLikes}</p>
-                          </div>
+                        <div className="flex flex-col gap-2 items-end">
+                          <Badge variant="secondary" className="text-xs">
+                            Judge Total: {item.judgeTotal}
+                          </Badge>
+                          <Badge variant="secondary" className="text-xs">
+                            Attendee Total: {item.spectatorTotal}
+                          </Badge>
+                          <Badge variant="secondary" className="text-xs">
+                            Attendee Likes: {item.spectatorLikes}
+                          </Badge>
                         </div>
                       </div>
                     </div>
