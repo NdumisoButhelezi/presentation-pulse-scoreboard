@@ -296,7 +296,8 @@ export function VoteModal({ presentation, isOpen, onClose, currentVote, onVoteSu
             {rating}/5
           </span>
         </div>
-        
+        {/* Move description above the stars */}
+        <p className="text-xs text-muted-foreground mb-1">{category.description}</p>
         <div className="py-2">
           <Rating 
             value={rating}
@@ -304,8 +305,6 @@ export function VoteModal({ presentation, isOpen, onClose, currentVote, onVoteSu
             className="justify-center"
           />
         </div>
-        
-        <p className="text-xs text-muted-foreground">{category.description}</p>
       </div>
     );
   };
