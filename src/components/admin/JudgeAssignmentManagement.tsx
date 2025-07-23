@@ -11,9 +11,12 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Checkbox } from '@/components/ui/checkbox';
 import { collection, getDocs, updateDoc, doc, query, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { User, ROOMS } from '@/types';
+import { User, ROOMS, Presentation } from '@/types';
 import { Users, Plus, Pencil, Trash2, Search, UserCheck, MapPin, Calendar, RefreshCw, Eye, EyeOff } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { getAllJudgePresentationAssignments, createJudgePresentationAssignment, deleteJudgePresentationAssignment, getAssignmentsForJudge } from '@/lib/firebase';
+import clsx from 'clsx';
+import styles from './JudgeAssignmentManagement.module.css';
 
 interface JudgeAssignmentManagementProps {
   searchTerm?: string;
@@ -37,10 +40,15 @@ export function JudgeAssignmentManagement({ searchTerm = '' }: JudgeAssignmentMa
   const [filterRoom, setFilterRoom] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [showUnassigned, setShowUnassigned] = useState(true);
+  const [presentations, setPresentations] = useState<Presentation[]>([]);
+  const [presentationRoomFilter, setPresentationRoomFilter] = useState<string>('all');
+  const [judgePresentationAssignments, setJudgePresentationAssignments] = useState<Record<string, string[]>>({}); // judgeId -> [presentationId]
   const { toast } = useToast();
 
   useEffect(() => {
     loadJudgeAssignments();
+    loadPresentations();
+    loadAllAssignments();
   }, []);
 
   const loadJudgeAssignments = async () => {
@@ -80,6 +88,21 @@ export function JudgeAssignmentManagement({ searchTerm = '' }: JudgeAssignmentMa
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadPresentations = async () => {
+    const snapshot = await getDocs(collection(db, 'presentations'));
+    setPresentations(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Presentation[]);
+  };
+
+  const loadAllAssignments = async () => {
+    const all = await getAllJudgePresentationAssignments();
+    const map: Record<string, string[]> = {};
+    all.forEach(a => {
+      if (!map[a.judgeId]) map[a.judgeId] = [];
+      map[a.judgeId].push(a.presentationId);
+    });
+    setJudgePresentationAssignments(map);
   };
 
   const handleUpdateAssignment = async (judgeId: string, newRooms: string[]) => {
@@ -146,10 +169,53 @@ export function JudgeAssignmentManagement({ searchTerm = '' }: JudgeAssignmentMa
     }
   };
 
-  const openEditDialog = (assignment: JudgeAssignment) => {
+  const openEditDialog = async (assignment: JudgeAssignment) => {
     setEditingAssignment(assignment);
     setSelectedRooms([...assignment.assignedRooms]);
     setIsEditDialogOpen(true);
+    // Preload assignments for this judge
+    const judgeAssignments = await getAssignmentsForJudge(assignment.judgeId);
+    setSelectedPresentations(judgeAssignments.map(a => a.presentationId));
+  };
+
+  // New state for selected presentations
+  const [selectedPresentations, setSelectedPresentations] = useState<string[]>([]);
+
+  const handlePresentationToggle = (presentationId: string) => {
+    setSelectedPresentations(prev =>
+      prev.includes(presentationId)
+        ? prev.filter(id => id !== presentationId)
+        : [...prev, presentationId]
+    );
+  };
+
+  const handleUpdatePresentationAssignments = async () => {
+    if (!editingAssignment) return;
+    // Get current assignments for this judge
+    const currentAssignments = await getAssignmentsForJudge(editingAssignment.judgeId);
+    const currentIds = currentAssignments.map(a => a.presentationId);
+    // Add new assignments
+    for (const pid of selectedPresentations) {
+      if (!currentIds.includes(pid)) {
+        await createJudgePresentationAssignment({
+          judgeId: editingAssignment.judgeId,
+          presentationId: pid,
+          assignedAt: new Date(),
+          assignedBy: 'admin', // TODO: use real admin id
+        });
+      }
+    }
+    // Remove unselected assignments
+    for (const a of currentAssignments) {
+      if (!selectedPresentations.includes(a.presentationId) && a.id) {
+        await deleteJudgePresentationAssignment(a.id);
+      }
+    }
+    toast({ title: 'Assignments updated', description: 'Presentation assignments updated.' });
+    setIsEditDialogOpen(false);
+    setEditingAssignment(null);
+    setSelectedPresentations([]);
+    loadAllAssignments();
   };
 
   const handleRoomToggle = (room: string) => {
@@ -333,6 +399,7 @@ export function JudgeAssignmentManagement({ searchTerm = '' }: JudgeAssignmentMa
                   <TableHead>Judge</TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Assigned Rooms</TableHead>
+                  <TableHead>Assigned Presentations</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -340,7 +407,7 @@ export function JudgeAssignmentManagement({ searchTerm = '' }: JudgeAssignmentMa
               <TableBody>
                 {filteredAssignments.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center py-8">
+                    <TableCell colSpan={6} className="text-center py-8">
                       <Users className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
                       <p className="text-muted-foreground">No judge assignments found matching your criteria.</p>
                     </TableCell>
@@ -372,6 +439,14 @@ export function JudgeAssignmentManagement({ searchTerm = '' }: JudgeAssignmentMa
                               </Badge>
                             ))
                           )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-col gap-1">
+                          {(judgePresentationAssignments[assignment.judgeId] || []).map(pid => {
+                            const pres = presentations.find(p => p.id === pid);
+                            return pres ? <span key={pid} className="text-xs">{pres.title}</span> : null;
+                          })}
                         </div>
                       </TableCell>
                       <TableCell>
@@ -440,7 +515,10 @@ export function JudgeAssignmentManagement({ searchTerm = '' }: JudgeAssignmentMa
 
       {/* Edit Assignment Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent>
+        <DialogContent aria-describedby="judge-assignment-description" className={styles['judge-assignment-modal']}>
+          <div id="judge-assignment-description" className="sr-only">
+            Assign rooms and presentations to the selected judge.
+          </div>
           <DialogHeader>
             <DialogTitle>Edit Judge Assignment</DialogTitle>
           </DialogHeader>
@@ -454,48 +532,81 @@ export function JudgeAssignmentManagement({ searchTerm = '' }: JudgeAssignmentMa
                   className="bg-muted"
                 />
               </div>
-              <div>
+              <section className={styles['room-assignment']}>
                 <Label>Assign to Rooms</Label>
-                <div className="grid grid-cols-2 gap-3 mt-2">
+                <div className="grid grid-cols-2 gap-2 mt-2">
                   {ROOMS.map(room => (
-                    <div key={room} className="flex items-center space-x-2">
+                    <div key={room} className={styles['room-checkbox-item']}>
                       <Checkbox
                         id={room}
                         checked={selectedRooms.includes(room)}
                         onCheckedChange={() => handleRoomToggle(room)}
+                        className={styles['room-checkbox']}
                       />
-                      <Label 
-                        htmlFor={room}
-                        className={`flex-1 p-2 rounded border cursor-pointer ${
-                          selectedRooms.includes(room) 
-                            ? getRoomBadgeColor(room)
-                            : 'bg-gray-50 text-gray-700 border-gray-200'
-                        }`}
-                      >
-                        {room}
-                      </Label>
+                      <span className={styles['room-name']}>{room}</span>
                     </div>
                   ))}
                 </div>
                 <p className="text-xs text-muted-foreground mt-2">
                   {selectedRooms.length === 0 
                     ? 'No rooms selected - judge will be unassigned' 
-                    : `Selected ${selectedRooms.length} room${selectedRooms.length !== 1 ? 's' : ''}`
-                  }
+                    : `Selected ${selectedRooms.length} room${selectedRooms.length !== 1 ? 's' : ''}`}
                 </p>
-              </div>
+              </section>
+              <section>
+                <Label>Assign Presentations</Label>
+                <div className="sticky top-0 z-10 bg-white pb-2 flex items-center gap-2">
+                  <span className="text-xs">Filter by Room:</span>
+                  <Select value={presentationRoomFilter} onValueChange={setPresentationRoomFilter}>
+                    <SelectTrigger className="w-32">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Rooms</SelectItem>
+                      {ROOMS.map(room => (
+                        <SelectItem key={room} value={room}>{room}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {/* Selected Presentations Summary */}
+                {selectedPresentations.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mb-2">
+                    {selectedPresentations.map(pid => {
+                      const pres = presentations.find(p => p.id === pid);
+                      return pres ? (
+                        <span key={pid} className="inline-block bg-blue-100 text-blue-800 rounded px-2 py-1 text-xs">{pres.title}</span>
+                      ) : null;
+                    })}
+                  </div>
+                )}
+                <div className={styles['presentation-assignment']}>
+                  {presentations.filter(p => presentationRoomFilter === 'all' || p.room === presentationRoomFilter).map(p => (
+                    <div key={p.id} className={styles['presentation-item']}>
+                      <Checkbox
+                        id={p.id}
+                        checked={selectedPresentations.includes(p.id)}
+                        onCheckedChange={() => handlePresentationToggle(p.id)}
+                        className={styles['presentation-checkbox']}
+                      />
+                      <div className={styles['presentation-content']}>
+                        <div className={styles['presentation-title']}>{p.title}</div>
+                        <span className={styles['presentation-room-tag']}>{p.room}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  {selectedPresentations.length === 0
+                    ? 'No presentations selected'
+                    : `Selected ${selectedPresentations.length} presentation${selectedPresentations.length !== 1 ? 's' : ''}`}
+                </p>
+              </section>
             </div>
           )}
-          <div className="flex space-x-2 pt-4">
-            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)} className="flex-1">
-              Cancel
-            </Button>
-            <Button 
-              onClick={() => editingAssignment && handleUpdateAssignment(editingAssignment.judgeId, selectedRooms)} 
-              className="flex-1"
-            >
-              Update Assignment
-            </Button>
+          <div className={styles['modal-actions']}>
+            <button type="button" onClick={() => setIsEditDialogOpen(false)} className={styles['cancel-button']}>Cancel</button>
+            <button type="button" onClick={async () => { await handleUpdateAssignment(editingAssignment.judgeId, selectedRooms); await handleUpdatePresentationAssignments(); }} className={styles['update-button']}>Update Assignments</button>
           </div>
         </DialogContent>
       </Dialog>

@@ -1,0 +1,136 @@
+.judge-assignment-modal {
+  width: 90vw;
+  max-width: 800px;
+  min-height: 600px;
+  max-height: 90vh;
+  margin: auto;
+  padding: 24px;
+  border-radius: 12px;
+  background: white;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.modal-backdrop {
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+}
+
+.room-assignment {
+  margin-bottom: 32px;
+}
+
+.room-checkbox-item {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  margin-bottom: 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  cursor: pointer;
+  background: white;
+  transition: background 0.2s;
+}
+.room-checkbox-item:hover {
+  background-color: #f9fafb;
+}
+.room-checkbox {
+  margin-right: 12px;
+  width: 18px;
+  height: 18px;
+}
+.room-name {
+  font-weight: 600;
+  color: #374151;
+}
+
+.presentation-assignment {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  max-height: 300px;
+  overflow-y: auto;
+  background: #fff;
+}
+.presentation-item {
+  display: flex;
+  align-items: flex-start;
+  padding: 16px;
+  border-bottom: 1px solid #f3f4f6;
+  gap: 12px;
+}
+.presentation-checkbox {
+  margin-top: 4px;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+.presentation-content {
+  flex: 1;
+  min-width: 0;
+}
+.presentation-title {
+  font-weight: 500;
+  color: #111827;
+  line-height: 1.4;
+  margin-bottom: 4px;
+  word-wrap: break-word;
+}
+.presentation-room-tag {
+  display: inline-block;
+  background: #dbeafe;
+  color: #1e40af;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  margin-top: 8px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid #e5e7eb;
+}
+.cancel-button {
+  padding: 12px 24px;
+  background: white;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  color: #374151;
+  font-weight: 500;
+  cursor: pointer;
+}
+.update-button {
+  padding: 12px 24px;
+  background: #1e40af;
+  border: none;
+  border-radius: 8px;
+  color: white;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+@media (max-width: 600px) {
+  .judge-assignment-modal {
+    min-height: 80vh;
+    padding: 12px;
+    max-width: 98vw;
+  }
+  .presentation-assignment {
+    max-height: 200px;
+  }
+  .modal-actions {
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 16px;
+    padding-top: 12px;
+  }
+} 
