@@ -289,7 +289,7 @@ export function LandingPage() {
               <ul className="space-y-3 text-gray-400">
                 <li><button onClick={() => navigate('/')} className="hover:text-white text-lg transition-colors duration-300">Home</button></li>
                 {/* <li><button onClick={() => navigate('/hall-of-fame')} className="hover:text-white text-lg transition-colors duration-300">Hall of Fame</button></li> */}
-                <li><button onClick={() => navigate('/admin')} className="hover:text-white text-lg transition-colors duration-300">Admin Panel</button></li>
+                {/* <li><button onClick={() => navigate('/admin')} className="hover:text-white text-lg transition-colors duration-300">Admin Panel</button></li> */}
               </ul>
             </div>
             <div>
