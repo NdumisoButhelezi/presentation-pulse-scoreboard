@@ -491,6 +491,7 @@ export function ReportsView({ searchTerm = '' }: ReportsViewProps) {
               </>
             )}
           </Button>
+          {/*
           <Button
             onClick={handleDeleteAllVotes}
             disabled={deletingVotes}
@@ -527,6 +528,7 @@ export function ReportsView({ searchTerm = '' }: ReportsViewProps) {
               </>
             )}
           </Button>
+          */}
         </div>
       </div>
 
