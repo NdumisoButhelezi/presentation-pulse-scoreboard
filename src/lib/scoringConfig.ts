@@ -4,28 +4,34 @@ import type { JudgeRating } from '@/types';
 // Default scoring categories
 export const DEFAULT_SCORING_CATEGORIES: ScoringCategory[] = [
   {
-    id: 'content',
-    name: 'Content Quality',
-    description: 'Evaluate the quality, depth, and accuracy of the presentation content',
-    weight: 0.4
+    id: 'technical',
+    name: 'Technical Quality',
+    description: 'Evaluate the quality, depth, and significant contribution to the field',
+    weight: 0.3
   },
   {
     id: 'delivery',
     name: 'Delivery',
-    description: 'Rate the presenter\'s speaking skills, engagement, and communication',
+    description: 'Rate the ability of the researcher to present the research study to the audience',
     weight: 0.3
   },
   {
     id: 'visuals',
     name: 'Visual Materials',
-    description: 'Assess the quality and effectiveness of slides and visual aids',
-    weight: 0.15
+    description: 'Assess the quality and effectiveness of slides and visual aids.',
+    weight: 0.1
   },
   {
     id: 'relevance',
     name: 'Relevance & Impact',
-    description: 'Rate the relevance to the field and potential impact of the research',
-    weight: 0.15
+    description: 'Rate the relevance to the field and potential impact of the research.',
+    weight: 0.1
+  },
+  {
+    id: 'experience',
+    name: 'Researcher Experience Level',
+    description: 'Professor - 1 Star, Dr- 2 Star, PhD Student- 3 star, Masters- 4 Star, Undergraduate -5 Star',
+    weight: 0.2
   }
 ];
 
