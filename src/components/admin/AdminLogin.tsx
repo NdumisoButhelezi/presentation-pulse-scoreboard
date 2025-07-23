@@ -79,14 +79,6 @@ export function AdminLogin() {
               {loading ? "Authenticating..." : "Access Admin Panel"}
             </Button>
           </form>
-          <div className="mt-6 p-3 bg-muted rounded-lg">
-            <p className="text-sm text-muted-foreground text-center">
-              <strong>Admin Credentials:</strong>
-            </p>
-            <p className="text-sm text-center font-mono mt-1">
-              Password: admin2025ICTAS
-            </p>
-          </div>
           <div className="mt-6 flex justify-center">
             <Button variant="ghost" onClick={handleBackToHome}>
               Back to Home
