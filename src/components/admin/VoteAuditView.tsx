@@ -233,6 +233,8 @@ export function VoteAuditView({ searchTerm = '' }: VoteAuditViewProps) {
   // CSV Export Function
   const exportAuditCsv = () => {
     if (!filteredVotes.length) return;
+    // Per-question columns
+    const questionColumns = DEFAULT_SCORING_CATEGORIES.map(cat => cat.name);
     const headers = [
       'userName',
       'presentationTitle',
@@ -240,17 +242,26 @@ export function VoteAuditView({ searchTerm = '' }: VoteAuditViewProps) {
       'originalSubmitTime',
       'lastUpdateTime',
       'isUpdate',
-      'isAbsent'
+      'isAbsent',
+      ...questionColumns
     ];
-    const rows = filteredVotes.map(vote => [
-      users[vote.userId]?.name || vote.userId || 'Unknown User',
-      vote.presentationTitle?.replace(/\n|\r|,/g, ' '),
-      vote.totalScore,
-      formatTimestamp(vote.timestamp),
-      vote.updatedAt ? formatTimestamp(vote.updatedAt) : 'Not updated',
-      vote.isUpdate ? 'Yes' : 'No',
-      vote.isAbsent ? 'Yes' : 'No'
-    ]);
+    const rows = filteredVotes.map(vote => {
+      // Map category id to score for this vote
+      const ratingMap = (vote.ratings || []).reduce((acc, rating) => {
+        acc[rating.categoryId] = rating.score;
+        return acc;
+      }, {} as Record<string, number>);
+      return [
+        users[vote.userId]?.name || vote.userId || 'Unknown User',
+        vote.presentationTitle?.replace(/\n|\r|,/g, ' '),
+        vote.totalScore,
+        formatTimestamp(vote.timestamp),
+        vote.updatedAt ? formatTimestamp(vote.updatedAt) : 'Not updated',
+        vote.isUpdate ? 'Yes' : 'No',
+        vote.isAbsent ? 'Yes' : 'No',
+        ...DEFAULT_SCORING_CATEGORIES.map(cat => ratingMap[cat.id] ?? '')
+      ];
+    });
     const csvContent = [headers, ...rows]
       .map(row => row.map(field => `"${String(field).replace(/"/g, '""')}"`).join(','))
       .join('\r\n');
