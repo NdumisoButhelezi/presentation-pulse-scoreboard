@@ -230,6 +230,45 @@ export function VoteAuditView({ searchTerm = '' }: VoteAuditViewProps) {
     });
   };
 
+  // CSV Export Function
+  const exportAuditCsv = () => {
+    if (!filteredVotes.length) return;
+    const headers = [
+      'userName',
+      'presentationTitle',
+      'totalScore',
+      'originalSubmitTime',
+      'lastUpdateTime',
+      'isUpdate',
+      'isAbsent'
+    ];
+    const rows = filteredVotes.map(vote => [
+      users[vote.userId]?.name || vote.userId || 'Unknown User',
+      vote.presentationTitle?.replace(/\n|\r|,/g, ' '),
+      vote.totalScore,
+      formatTimestamp(vote.timestamp),
+      vote.updatedAt ? formatTimestamp(vote.updatedAt) : 'Not updated',
+      vote.isUpdate ? 'Yes' : 'No',
+      vote.isAbsent ? 'Yes' : 'No'
+    ]);
+    const csvContent = [headers, ...rows]
+      .map(row => row.map(field => `"${String(field).replace(/"/g, '""')}"`).join(','))
+      .join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `vote-audit-trail-${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast({
+      title: 'CSV Export Complete',
+      description: `Exported ${filteredVotes.length} votes to CSV`,
+    });
+  };
+
   // Filter votes based on current filters
   const filteredVotes = votes
     .filter(vote => {
@@ -365,7 +404,16 @@ export function VoteAuditView({ searchTerm = '' }: VoteAuditViewProps) {
                 disabled={!votes.length}
               >
                 <Download className="h-4 w-4 mr-2" />
-                Export
+                Export JSON
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={exportAuditCsv}
+                disabled={!filteredVotes.length}
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Export CSV
               </Button>
             </div>
           </CardTitle>
